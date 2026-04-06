@@ -1,0 +1,14 @@
+bundle:
+  name: diagram-behavior
+  version: 0.1.0
+  description: Diagram beautification capability — Graphviz/Mermaid rendering and aesthetic transformation via nano-banana
+
+tools:
+  - module: tool-nano-banana
+    source: git+https://github.com/kenotron-ms/amplifier-module-tool-nano-banana@main
+  - module: tool-stitch-panels
+    source: ../modules/tool-stitch-panels
+
+agents:
+  include:
+    - diagram-beautifier:diagram-beautifier
