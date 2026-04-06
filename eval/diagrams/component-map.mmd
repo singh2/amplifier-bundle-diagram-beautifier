@@ -1,0 +1,111 @@
+classDiagram
+    class AmplifierSession {
+        +String session_id
+        +String parent_id
+        +Coordinator coordinator
+        +SessionStatus status
+        +execute(prompt) String
+        +cleanup()
+        +initialize()
+    }
+
+    class Coordinator {
+        +HookRegistry hooks
+        +CancellationToken cancellation
+        +mount(mount_point, instance, name)
+        +get(mount_point) Module
+        +register_capability(name, value)
+        +get_capability(name) Any
+        +cleanup()
+    }
+
+    class HookRegistry {
+        +register(event, handler, priority, name)
+        +emit(event, data) HookResult
+        +unregister(name)
+    }
+
+    class Orchestrator {
+        <<interface>>
+        +execute(prompt, context, providers, tools, hooks) String
+    }
+
+    class LoopStreaming {
+        +execute(prompt, context, providers, tools, hooks) String
+        -_dispatch_tool(tool_call, tools, hooks) ToolResult
+    }
+
+    class ContextManager {
+        <<interface>>
+        +add_message(message)
+        +get_messages_for_request(provider) List
+        +set_messages(messages)
+        +set_system_prompt_factory(factory)
+        +clear()
+    }
+
+    class Provider {
+        <<interface>>
+        +String name
+        +complete(request) ChatResponse
+        +parse_tool_calls(response) List~ToolCall~
+        +get_info() ProviderInfo
+    }
+
+    class Tool {
+        <<interface>>
+        +String name
+        +String description
+        +Dict input_schema
+        +execute(input) ToolResult
+    }
+
+    class HookHandler {
+        <<interface>>
+        +call(event, data) HookResult
+    }
+
+    class ChatRequest {
+        +List messages
+        +List tools
+        +ModelConfig config
+    }
+
+    class ChatResponse {
+        +List content
+        +List tool_calls
+        +UsageStats usage
+    }
+
+    class ToolResult {
+        +Boolean success
+        +Any output
+        +Dict error
+        +get_serialized_output() String
+    }
+
+    class HookResult {
+        +String action
+        +String reason
+        +String context_injection
+        +Boolean ephemeral
+        +String approval_prompt
+    }
+
+    AmplifierSession --> Coordinator : uses
+    AmplifierSession --> Orchestrator : delegates to
+    Coordinator --> HookRegistry : owns
+    Coordinator --> Orchestrator : mounts
+    Coordinator --> ContextManager : mounts
+    Coordinator --> Provider : mounts many
+    Coordinator --> Tool : mounts many
+    HookRegistry --> HookHandler : manages
+    LoopStreaming ..|> Orchestrator : implements
+    Orchestrator --> Provider : calls complete()
+    Orchestrator --> Tool : calls execute()
+    Orchestrator --> ContextManager : reads and writes
+    Orchestrator --> HookRegistry : emits events
+    Provider --> ChatRequest : receives
+    Provider --> ChatResponse : returns
+    Tool --> ToolResult : returns
+    HookHandler --> HookResult : returns

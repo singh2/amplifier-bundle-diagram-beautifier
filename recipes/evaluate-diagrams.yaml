@@ -1,0 +1,171 @@
+# =============================================================================
+# Evaluate Diagram Beautifier
+# =============================================================================
+#
+# Runs every diagram in eval/diagrams/ through the diagram beautifier agent,
+# producing Dark Mode Tech, Clean Minimalist, Sketchnote, and Claymation variants
+# for each input. Handles all three input formats: .dot (Graphviz source),
+# .mmd (Mermaid source), .png (existing diagram image -- skips the render step).
+#
+# Usage:
+#   amplifier run "execute recipes/evaluate-diagrams.yaml"
+#
+# Prerequisites:
+#   - GOOGLE_API_KEY environment variable set (nano-banana image generation)
+#   - Graphviz `dot` CLI available (for .dot source rendering)
+#   - `mmdc` CLI available (for .mmd source rendering -- npm i -g @mermaid-js/mermaid-cli)
+#
+# Output per diagram:
+#   eval-results/<timestamp>-diagrams/<diagram-name>/<diagram-name>_darkmode.png
+#   eval-results/<timestamp>-diagrams/<diagram-name>/<diagram-name>_minimal.png
+#   eval-results/<timestamp>-diagrams/<diagram-name>/<diagram-name>_sketchnote.png
+#   eval-results/<timestamp>-diagrams/<diagram-name>/<diagram-name>_claymation.png
+#
+# =============================================================================
+
+name: "evaluate-diagram-beautifier"
+description: "Batch-run all diagrams in eval/diagrams/ through the diagram beautifier, producing Dark Mode Tech, Clean Minimalist, Sketchnote, and Claymation variants for each"
+version: "1.0.0"
+tags: ["evaluation", "diagram-beautifier", "batch"]
+
+context:
+  diagrams_dir: "eval/diagrams"
+
+steps:
+  # ---------------------------------------------------------------------------
+  # Step 1: Create a timestamped run directory
+  # ---------------------------------------------------------------------------
+  - id: "setup"
+    type: "bash"
+    command: >
+      RUN_DIR="eval-results/$(date +%Y-%m-%d_%H%M%S)-diagrams" &&
+      mkdir -p "$RUN_DIR" &&
+      printf "%s" "$RUN_DIR"
+    output: "run_dir"
+
+  # ---------------------------------------------------------------------------
+  # Step 2: Discover diagram files in eval/diagrams/ and emit as JSON
+  #
+  # Picks up .dot, .mmd, and .png files. Skips macOS metadata files.
+  # Emits a JSON array of {name, filename, path, fmt} objects for foreach.
+  # ---------------------------------------------------------------------------
+  - id: "load-diagrams"
+    type: "bash"
+    command: |
+      python3 -c "
+      import os, json
+      d = '{{diagrams_dir}}'
+      exts = {'.dot', '.mmd', '.png'}
+      files = sorted([
+          f for f in os.listdir(d)
+          if os.path.splitext(f)[1].lower() in exts
+          and not f.startswith('.')
+      ])
+      diagrams = [
+          {
+              'name': os.path.splitext(f)[0],
+              'filename': f,
+              'path': os.path.join(d, f),
+              'fmt': {'mmd': 'mermaid'}.get(os.path.splitext(f)[1].lstrip('.'), os.path.splitext(f)[1].lstrip('.'))
+          }
+          for f in files
+      ]
+      print(json.dumps(diagrams))
+      "
+    output: "diagrams"
+
+  # ---------------------------------------------------------------------------
+  # Step 3: Beautify each diagram -- full 8-step workflow, all four variants
+  #
+  # Each diagram gets its own subdirectory under the run dir. The agent runs
+  # the complete diagram-beautifier workflow:
+  #   Step 1: Parse topology manifest + semantic node types
+  #   Steps 2-3: Dependency check, Claymation Normal vs Diorama decision
+  #   Step 4: Panel decomposition
+  #   Step 5a: Dark Mode Tech variant (Polished approach)
+  #   Step 5b: Clean Minimalist variant (Polished approach)
+  #   Step 5c: Hand-Drawn Sketchnote variant (Cinematic approach)
+  #   Step 5d: Claymation Studio variant (Cinematic approach, Normal or Diorama)
+  #   Steps 6a-6d: Quality review for all four variants
+  #   Step 7: Assemble panels if multi-panel
+  #   Step 8: Present side-by-side (no stitched output)
+  # ---------------------------------------------------------------------------
+  - id: "beautify-diagrams"
+    foreach: "{{diagrams}}"
+    as: "diagram"
+    steps:
+      - id: "create-diagram-dir"
+        type: "bash"
+        command: >
+          mkdir -p "{{run_dir}}/{{diagram.name}}" &&
+          printf "%s" "{{run_dir}}/{{diagram.name}}"
+
+      - id: "beautify"
+        agent: "diagram-beautifier:diagram-beautifier"
+        prompt: |
+          Beautify this diagram.
+
+          Input: {{diagram.path}} (format: {{diagram.fmt}})
+
+          Save outputs to {{run_dir}}/{{diagram.name}}/:
+          - {{diagram.name}}_darkmode.png
+          - {{diagram.name}}_minimal.png
+          - {{diagram.name}}_sketchnote.png
+          - {{diagram.name}}_claymation.png
+        timeout: 1800
+        on_error: "continue"
+
+      - id: "verify"
+        type: "bash"
+        command: |
+          DIR="{{run_dir}}/{{diagram.name}}"
+          LOG="{{run_dir}}/failures.log"
+          PNG_COUNT=$(find "$DIR" -name "*.png" 2>/dev/null | wc -l | tr -d ' ')
+          if [ "$PNG_COUNT" -eq 0 ]; then
+            echo "FAILED: {{diagram.name}}" | tee -a "$LOG" >&2
+            exit 1
+          else
+            echo "OK: {{diagram.name}} -- $PNG_COUNT image(s) in $DIR"
+          fi
+        on_error: "continue"
+
+  # ---------------------------------------------------------------------------
+  # Step 4: Compile a summary report of all generated outputs
+  # ---------------------------------------------------------------------------
+  - id: "generate-report"
+    type: "bash"
+    command: |
+      echo "================================================="
+      echo " Diagram Beautifier Evaluation Report"
+      echo " Run: {{run_dir}}"
+      echo "================================================="
+      echo ""
+      TOTAL_DIAGRAMS=0
+      TOTAL_IMAGES=0
+      FAILED=0
+      for diagram_dir in "{{run_dir}}"/*/; do
+        if [ -d "$diagram_dir" ]; then
+          NAME=$(basename "$diagram_dir")
+          COUNT=$(find "$diagram_dir" -name "*.png" 2>/dev/null | wc -l | tr -d ' ')
+          TOTAL_DIAGRAMS=$((TOTAL_DIAGRAMS + 1))
+          if [ "$COUNT" -gt 0 ]; then
+            echo "  ✓  $NAME  ($COUNT images)"
+            TOTAL_IMAGES=$((TOTAL_IMAGES + COUNT))
+          else
+            echo "  ✗  $NAME  (no output -- check logs)"
+            FAILED=$((FAILED + 1))
+          fi
+        fi
+      done
+      echo ""
+      echo "Diagrams processed:    $TOTAL_DIAGRAMS"
+      echo "Total images:          $TOTAL_IMAGES"
+      echo "Expected:              84  (21 diagrams × 4 images each)"
+      echo "Failed:                $FAILED"
+      echo ""
+      echo "Output directory: {{run_dir}}"
+      echo ""
+      echo "Review outputs:"
+      find "{{run_dir}}" -name "*.png" | sort | while read f; do
+        echo "  open \"$f\""
+      done

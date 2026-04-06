@@ -1,0 +1,84 @@
+erDiagram
+    USER {
+        int id PK
+        string email UK
+        string display_name
+        string password_hash
+        string status
+        datetime created_at
+        datetime last_login_at
+    }
+
+    ORGANIZATION {
+        int id PK
+        string name
+        string slug UK
+        string plan
+        int owner_id FK
+        datetime created_at
+    }
+
+    MEMBERSHIP {
+        int id PK
+        int user_id FK
+        int org_id FK
+        string role
+        datetime joined_at
+    }
+
+    PROJECT {
+        int id PK
+        int org_id FK
+        int created_by FK
+        string name
+        string status
+        date due_date
+        datetime created_at
+    }
+
+    TASK {
+        int id PK
+        int project_id FK
+        int assignee_id FK
+        int created_by FK
+        string title
+        string status
+        string priority
+        date due_date
+        datetime created_at
+        datetime completed_at
+    }
+
+    COMMENT {
+        int id PK
+        int task_id FK
+        int author_id FK
+        text body
+        datetime created_at
+        datetime edited_at
+    }
+
+    LABEL {
+        int id PK
+        int org_id FK
+        string name
+        string color
+    }
+
+    TASK_LABEL {
+        int task_id FK
+        int label_id FK
+    }
+
+    USER ||--o{ MEMBERSHIP : has
+    ORGANIZATION ||--o{ MEMBERSHIP : has
+    ORGANIZATION ||--o{ PROJECT : contains
+    USER ||--o{ PROJECT : creates
+    PROJECT ||--o{ TASK : contains
+    USER ||--o{ TASK : assigned_to
+    USER ||--o{ TASK : creates
+    TASK ||--o{ COMMENT : has
+    USER ||--o{ COMMENT : writes
+    ORGANIZATION ||--o{ LABEL : defines
+    TASK ||--o{ TASK_LABEL : tagged_with
+    LABEL ||--o{ TASK_LABEL : applied_to

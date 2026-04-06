@@ -1,0 +1,79 @@
+digraph amplifier_session_loop {
+    rankdir = TB;
+    graph [
+        label = "Amplifier Orchestrator Loop",
+        labelloc = t,
+        fontname = "Helvetica",
+        fontsize = 14,
+        splines = ortho
+    ];
+    node [fontname = "Helvetica", fontsize = 10, style = "rounded,filled", fillcolor = "#f5f5f5"];
+    edge [fontname = "Helvetica", fontsize = 9];
+
+    session_start [shape = ellipse, label = "session.execute(prompt)", fillcolor = "#a5d6a7"];
+    emit_session_start [shape = box, label = "hooks.emit(\"session:start\")"];
+    load_modules [shape = box, label = "coordinator.get()\norchestrator · context · providers · tools"];
+    add_user_message [shape = box, label = "context.add_message()\n{ role: user, content: prompt }"];
+
+    subgraph cluster_turn {
+        label = "Per-Turn Loop";
+        style = dashed;
+        color = "#546e7a";
+        fontname = "Helvetica";
+
+        get_messages [shape = box, label = "context.get_messages_for_request(provider)"];
+        emit_provider_request [shape = box, label = "hooks.emit(\"provider:request\")"];
+        provider_complete [shape = box, label = "provider.complete(ChatRequest)\n→ ChatResponse"];
+        emit_provider_response [shape = box, label = "hooks.emit(\"provider:response\")"];
+        add_assistant_message [shape = box, label = "context.add_message()\n{ role: assistant }"];
+        has_tool_calls [shape = diamond, label = "tool_calls\nempty?", fillcolor = "#fff59d"];
+
+        subgraph cluster_tool_dispatch {
+            label = "Per-Tool-Call";
+            style = dotted;
+            color = "#90a4ae";
+            fontname = "Helvetica";
+
+            emit_tool_pre [shape = box, label = "hooks.emit(\"tool:pre\")"];
+            hook_denied [shape = diamond, label = "HookResult.action\n== deny?", fillcolor = "#fff59d"];
+            tool_execute [shape = box, label = "tool.execute(input)\n→ ToolResult"];
+            emit_tool_post [shape = box, label = "hooks.emit(\"tool:post\")"];
+            add_tool_result [shape = box, label = "context.add_message()\n{ role: tool }"];
+        }
+    }
+
+    emit_orchestrator_complete [shape = box, label = "hooks.emit(\"orchestrator:complete\")"];
+    check_cancelled [shape = diamond, label = "cancellation\nrequested?", fillcolor = "#fff59d"];
+    status_completed [shape = box, label = "status = completed"];
+    status_cancelled [shape = box, label = "status = cancelled"];
+    session_cleanup [shape = box, label = "session.cleanup()\nhooks.emit(\"session:end\")"];
+    return_result [shape = ellipse, label = "return response_string", fillcolor = "#a5d6a7"];
+
+    session_start -> emit_session_start;
+    emit_session_start -> load_modules;
+    load_modules -> add_user_message;
+    add_user_message -> get_messages;
+
+    get_messages -> emit_provider_request;
+    emit_provider_request -> provider_complete;
+    provider_complete -> emit_provider_response;
+    emit_provider_response -> add_assistant_message;
+    add_assistant_message -> has_tool_calls;
+
+    has_tool_calls -> emit_orchestrator_complete [label = "yes (no tools)"];
+    has_tool_calls -> emit_tool_pre [label = "no (has tools)"];
+
+    emit_tool_pre -> hook_denied;
+    hook_denied -> tool_execute [label = "no"];
+    hook_denied -> add_tool_result [label = "yes (inject denial)"];
+    tool_execute -> emit_tool_post;
+    emit_tool_post -> add_tool_result;
+    add_tool_result -> get_messages [label = "next tool / next turn"];
+
+    emit_orchestrator_complete -> check_cancelled;
+    check_cancelled -> status_completed [label = "no"];
+    check_cancelled -> status_cancelled [label = "yes"];
+    status_completed -> session_cleanup;
+    status_cancelled -> session_cleanup;
+    session_cleanup -> return_result;
+}

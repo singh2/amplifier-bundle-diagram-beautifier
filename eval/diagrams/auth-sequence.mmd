@@ -1,0 +1,39 @@
+sequenceDiagram
+    participant Browser
+    participant API Gateway
+    participant Auth Service
+    participant User DB
+    participant Token Store
+
+    Browser->>API Gateway: POST /auth/login {email, password}
+    API Gateway->>Auth Service: ValidateCredentials(email, password)
+    Auth Service->>User DB: SELECT * FROM users WHERE email = ?
+    User DB-->>Auth Service: user record {id, hash, roles}
+    Auth Service->>Auth Service: bcrypt.verify(password, hash)
+
+    alt credentials valid
+        Auth Service->>Token Store: StoreRefreshToken(userId, token, ttl=30d)
+        Token Store-->>Auth Service: stored OK
+        Auth Service-->>API Gateway: {accessToken, refreshToken, expiresIn: 900}
+        API Gateway-->>Browser: 200 OK {accessToken, refreshToken}
+    else credentials invalid
+        Auth Service-->>API Gateway: 401 Unauthorized
+        API Gateway-->>Browser: 401 {error: invalid_credentials}
+    end
+
+    Note over Browser,API Gateway: Subsequent authenticated request
+
+    Browser->>API Gateway: GET /api/profile [Authorization: Bearer accessToken]
+    API Gateway->>Auth Service: ValidateToken(accessToken)
+    Auth Service->>Auth Service: verify JWT signature + expiry
+    Auth Service-->>API Gateway: {userId, roles, valid: true}
+    API Gateway-->>Browser: 200 OK {profile data}
+
+    Note over Browser,Token Store: Token refresh flow
+
+    Browser->>API Gateway: POST /auth/refresh {refreshToken}
+    API Gateway->>Token Store: LookupRefreshToken(refreshToken)
+    Token Store-->>API Gateway: {userId, valid: true}
+    API Gateway->>Auth Service: IssueNewTokens(userId)
+    Auth Service-->>API Gateway: {newAccessToken, newRefreshToken}
+    API Gateway-->>Browser: 200 OK {newAccessToken, newRefreshToken}

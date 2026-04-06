@@ -1,0 +1,85 @@
+digraph amplifier_bundle_composition {
+    rankdir = LR;
+    graph [
+        label = "Bundle Composition → Running Session",
+        labelloc = t,
+        fontname = "Helvetica",
+        fontsize = 14,
+        splines = ortho
+    ];
+    node [fontname = "Helvetica", fontsize = 10, shape = box, style = "rounded,filled", fillcolor = "#f5f5f5"];
+    edge [fontname = "Helvetica", fontsize = 9];
+
+    subgraph cluster_bundles {
+        label = "Input Bundles";
+        style = dashed;
+        color = "#78909c";
+        fontname = "Helvetica";
+
+        foundation [
+            label = "amplifier-foundation\nproviders · tools · hooks\norchestrator · context",
+            fillcolor = "#e3f2fd"
+        ];
+        behavior [
+            label = "my-capability.yaml\ntools: [tool-foo]\nagents: [my-agent]\ncontext.include: [instructions.md]",
+            fillcolor = "#e8f5e9"
+        ];
+        root_bundle [
+            label = "bundle.md (root)\nincludes: [foundation, behavior]\ninstruction: system prompt\nbundle.name → @namespace",
+            fillcolor = "#fff3e0"
+        ];
+    }
+
+    compose [
+        shape = diamond,
+        label = "bundle.compose(*others)\nproviders + tools: by module ID\nagents: later overrides by name\ncontext: accumulates with prefix",
+        fillcolor = "#fff9c4"
+    ];
+
+    effective [
+        label = "effective Bundle\nmerged providers · tools · hooks\nagents · context · instruction",
+        fillcolor = "#f3e5f5"
+    ];
+
+    prepare [
+        label = "await bundle.prepare()\nresolve @mention paths\ncache context file contents",
+        fillcolor = "#ffebee"
+    ];
+
+    prepared [
+        label = "PreparedBundle\nbundle · resolver\n@namespace paths resolved",
+        fillcolor = "#fce4ec"
+    ];
+
+    mount_plan [
+        label = "bundle.to_mount_plan()\nsession.orchestrator · session.context\nproviders · tools · hooks · agents"
+    ];
+
+    session_obj [
+        label = "AmplifierSession(mount_plan)\nsession_id: new UUID\nparent_id: parent or None",
+        fillcolor = "#e8eaf6"
+    ];
+
+    initialize [
+        label = "await session.initialize()\nload orchestrator → context\nload providers → tools → hooks\ncoordinator.mount(mount_point, instance)"
+    ];
+
+    prompt_factory [
+        label = "_create_system_prompt_factory()\nre-reads @mentioned files each turn\ndeduplicates content by SHA-256",
+        fillcolor = "#e0f7fa"
+    ];
+
+    ready [shape = ellipse, label = "session.execute(prompt) ready", fillcolor = "#a5d6a7"];
+
+    foundation -> compose;
+    behavior -> compose;
+    root_bundle -> compose;
+    compose -> effective;
+    effective -> prepare;
+    prepare -> prepared;
+    prepared -> mount_plan;
+    mount_plan -> session_obj;
+    session_obj -> initialize;
+    initialize -> prompt_factory;
+    prompt_factory -> ready;
+}

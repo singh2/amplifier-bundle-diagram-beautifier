@@ -1,0 +1,72 @@
+digraph amplifier_module_types {
+    rankdir = TB;
+    graph [
+        label = "Amplifier: 5 Module Types",
+        labelloc = t,
+        fontname = "Helvetica",
+        fontsize = 14
+    ];
+    node [fontname = "Helvetica", fontsize = 10, style = "rounded,filled"];
+    edge [fontname = "Helvetica", fontsize = 9];
+
+    coordinator [
+        shape = box,
+        label = "Coordinator\nkernel mount registry",
+        fillcolor = "#263238",
+        fontcolor = white
+    ];
+
+    orchestrator_type [
+        shape = box,
+        label = "Orchestrator\norchestrator.execute()\ncode-decided invocation",
+        fillcolor = "#1565c0",
+        fontcolor = white
+    ];
+    context_type [
+        shape = box,
+        label = "ContextManager\nget_messages_for_request()\ntoken budget policy",
+        fillcolor = "#4527a0",
+        fontcolor = white
+    ];
+    provider_type [
+        shape = box,
+        label = "Provider\nprovider.complete(ChatRequest)\nparse_tool_calls(response)",
+        fillcolor = "#1b5e20",
+        fontcolor = white
+    ];
+    tool_type [
+        shape = box,
+        label = "Tool\ntool.execute(input) → ToolResult\nLLM reads description + input_schema",
+        fillcolor = "#e65100",
+        fontcolor = white
+    ];
+    hook_type [
+        shape = box,
+        label = "HookHandler\nhooks.emit(event) → HookResult\nactions: continue · deny · inject_context",
+        fillcolor = "#880e4f",
+        fontcolor = white
+    ];
+
+    ex_orchestrator [shape = box, label = "loop-streaming\nloop-basic", fillcolor = "#bbdefb"];
+    ex_context [shape = box, label = "context-simple\ncontext-persistent", fillcolor = "#d1c4e9"];
+    ex_provider [shape = box, label = "anthropic · openai\nazure · ollama", fillcolor = "#c8e6c9"];
+    ex_tool [shape = box, label = "tool-filesystem · tool-bash\ntool-task · tool-web", fillcolor = "#ffe0b2"];
+    ex_hook [shape = box, label = "hook-logging\nhook-approval · hook-redaction", fillcolor = "#f8bbd0"];
+
+    coordinator -> orchestrator_type [label = "mount(\"orchestrator\")"];
+    coordinator -> context_type [label = "mount(\"context\")"];
+    coordinator -> provider_type [label = "mount(\"providers\", name)"];
+    coordinator -> tool_type [label = "mount(\"tools\", name)"];
+    coordinator -> hook_type [label = "hooks.register(event, handler)"];
+
+    orchestrator_type -> context_type [label = "get_messages_for_request()"];
+    orchestrator_type -> provider_type [label = "complete(ChatRequest)"];
+    orchestrator_type -> tool_type [label = "execute(input)  [after LLM requests]"];
+    orchestrator_type -> hook_type [label = "emit(tool:pre · tool:post · provider:request)"];
+
+    orchestrator_type -> ex_orchestrator [style = dashed, label = "e.g."];
+    context_type -> ex_context [style = dashed, label = "e.g."];
+    provider_type -> ex_provider [style = dashed, label = "e.g."];
+    tool_type -> ex_tool [style = dashed, label = "e.g."];
+    hook_type -> ex_hook [style = dashed, label = "e.g."];
+}

@@ -1,0 +1,27 @@
+flowchart TD
+    A([tool-task receives agent_name]) --> B[Lookup coordinator.config agents dict]
+    B --> C[load_bundle - works for bundles and agents equally]
+    C --> D{compose = true?}
+    D -->|yes| E[effective = parent.compose child - child instruction overrides]
+    D -->|no| F[Use child bundle as-is]
+    E --> G[child_mount_plan = effective.to_mount_plan]
+    F --> G
+    G --> H{provider_preferences provided?}
+    H -->|yes| I[apply_provider_preferences_with_resolution via parent coordinator]
+    H -->|no| J[Use mount_plan as-is]
+    I --> K[Create AmplifierSession - new session_id - parent_id set]
+    J --> K
+    K --> L[Mount shared module-source-resolver from parent]
+    L --> M[Register session.working_dir capability]
+    M --> N[await child_session.initialize]
+    N --> O[hooks.emit session:fork fires on all parent hooks]
+    O --> P{parent_messages provided?}
+    P -->|yes| Q[child_context.set_messages - context inheritance from parent]
+    P -->|no| R[Fresh context window for child session]
+    Q --> S[Register system_prompt_factory - re-reads files each turn]
+    R --> S
+    S --> T[Register spawn_completion_capture hook at priority 999]
+    T --> U[await child_session.execute instruction]
+    U --> V[Child runs full orchestrator loop independently]
+    V --> W[Unregister hook - await child_session.cleanup - emit session:end]
+    W --> X([Return: output - session_id - status - turn_count - metadata])

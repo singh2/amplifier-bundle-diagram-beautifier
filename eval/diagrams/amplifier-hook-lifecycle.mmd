@@ -1,0 +1,27 @@
+flowchart TD
+    A([Session Initialized]) --> B[hooks.emit session:start]
+    B --> C[hooks.emit prompt:submit]
+    C --> D[hooks.emit provider:request]
+    D --> E[provider.complete - LLM generates response]
+    E --> F[hooks.emit provider:response]
+    F --> G{Tool calls\npresent?}
+    G -->|yes| H[hooks.emit tool:pre]
+    H --> I{HookResult.action?}
+    I -->|continue| J[tool.execute runs normally]
+    I -->|deny| K[Denial reason injected into context]
+    I -->|inject_context| L[Context injection added before next LLM call]
+    J --> M[hooks.emit tool:post]
+    K --> M
+    L --> M
+    M --> N{inject_context\nin tool:post?}
+    N -->|yes - ephemeral| O[Temporary injection - current turn only]
+    N -->|no| P[Continue to next tool call]
+    O --> P
+    P --> G
+    G -->|no| Q[hooks.emit orchestrator:complete]
+    Q --> R{Cancellation\nrequested?}
+    R -->|no| S[hooks.emit prompt:complete]
+    R -->|yes| T[hooks.emit cancel:completed]
+    S --> U[hooks.emit session:end]
+    T --> U
+    U --> V([Session Ends - cleanup complete])

@@ -1,0 +1,20 @@
+flowchart TD
+    A([User task arrives in root session]) --> B{Expert agent claims\nthis domain?}
+    B -->|yes - delegate| C[delegate to expert-agent\n~50 tokens spent in root context]
+    B -->|no - handle directly| Z[Handle directly in root session\nconsumes root context budget]
+
+    C --> D[[Expert Agent Session - separate context window]]
+    D --> E[system_prompt_factory loads @mentioned docs\n8000+ tokens consumed in AGENT context]
+    E --> F[Orchestrator loop runs\nfile reads and grep and analysis\n~20000 tokens consumed here not in root]
+    F --> G[Distill findings into concise response]
+    G --> H[Return ~500 token summary to root session]
+
+    H --> I[Root receives summary\nonly ~500 tokens added to root window]
+    I --> J([Root session stays lean\nmore budget for future turns])
+
+    Z --> K[Root burns full token cost\n~20000 tokens for same work]
+    K --> L([Root context fills faster\nsession degrades sooner])
+
+    style D fill:#e8eaf6,stroke:#7986cb
+    style J fill:#c8e6c9,stroke:#66bb6a
+    style L fill:#ffcdd2,stroke:#ef9a9a
