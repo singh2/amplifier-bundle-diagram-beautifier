@@ -345,43 +345,64 @@ double duty as both the routing decision AND the Step 1 ground truth extraction.
    2-N reference Panel 1 for visual consistency.
 
 6. **Quality review**: Analyze each panel for all four variants using `nano-banana
-   analyze` across 8 dimensions. All variants share the same review criteria; the
-   difference is the ground truth source.
+   analyze` across 8 dimensions, rating each dimension 1-5. All variants share the
+   same review criteria; the difference is the ground truth source.
 
-   **8 review dimensions (all variants):**
+   **Scoring rubric (all dimensions):**
+   - **5** = Perfect — no issues detected
+   - **4** = Near-perfect — 1-2 minor issues
+   - **3** = Good — >80% correct, a few problems
+   - **2** = Significant gaps — multiple issues
+   - **1** = Major failure — widespread problems
+
+   **8 review dimensions (rate each 1-5):**
    - **Content accuracy**: correct content representation
    - **Layout quality**: spatial arrangement and readability
    - **Visual clarity**: legibility and contrast
    - **Prompt fidelity**: adherence to the generation prompt
    - **Aesthetic fidelity**: consistency with the target aesthetic
    - **Label fidelity**: check all text labels against the topology manifest
+     (use `build_label_fidelity_prompt()` from `diagram_beautifier.review`)
    - **Structural accuracy**: verify node count and major connections against the
-     topology manifest
+     topology manifest (use `build_structural_accuracy_prompt()` from
+     `diagram_beautifier.review`)
    - **Color-category fidelity** (diagrams with a semantic legend only): verify
      that every node appears under the correct category. Flag any reassigned node.
 
-   Max 1 refinement pass per panel per variant, targeting only specific issues.
+   Any dimension scoring below 3 triggers a targeted refinement pass (max 1 per
+   panel per variant).
 
    ### 6a. Dark Mode Tech and 6b. Clean Minimalist
 
    **Ground truth**: topology manifest + (for PNG input) source PNG for reference.
-   If label or node count discrepancies are found, re-prompt with the exact missing
-   items listed.
+   Rate label fidelity and structural accuracy 1-5 using the scoring rubric.
+   If label or node count discrepancies are found (score < 3), re-prompt with the
+   exact missing items listed.
 
    ### 6c. Hand-Drawn Sketchnote and 6d. Claymation
 
    **Ground truth**: the topology manifest is the sole ground truth — no reference
-   image fallback regardless of input type.
+   image fallback regardless of input type. Rate label fidelity and structural
+   accuracy 1-5 using the scoring rubric.
 
-   **Missing nodes refinement**: if any nodes from the topology manifest are absent,
-   re-prompt with: "The following nodes from the topology manifest are absent: [missing
-   node names]. Include all of them."
+   **Missing nodes refinement**: if any nodes from the topology manifest are absent
+   (structural accuracy score < 3), re-prompt with: "The following nodes from the
+   topology manifest are absent: [missing node names]. Include all of them."
 
    **For Claymation Diorama specifically**: also verify that the scene reads as a
    physical environment with clay figures, not a flat diagram. If the output looks
    like a standard diagram with clay textures applied, re-prompt with: "Render this
    as a physical diorama scene — clay figures and props staged in a 3D environment,
    not nodes floating in space."
+
+   ### 6e. Programmatic verification
+
+   After VLM review, run `diagram_beautifier.verify.compare_labels()` and
+   `diagram_beautifier.verify.compare_edges()` using labels extracted via
+   `build_label_extraction_prompt()`. This provides independent, non-VLM
+   confirmation of topological fidelity.
+
+   Report: completeness_score, missing labels, missing edges.
 
 7. **Assemble** (multi-panel only): Call `stitch_panels` to combine panels.
    Choose direction based on diagram flow:

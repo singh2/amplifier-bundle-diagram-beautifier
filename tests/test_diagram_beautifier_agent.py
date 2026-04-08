@@ -376,6 +376,44 @@ def test_step6_cinematic_has_missing_node_refinement_instruction() -> None:
     )
 
 
+def test_step6_uses_numerical_scoring() -> None:
+    """Step 6 must use 1-5 numerical scoring, not binary PASS/NEEDS_REFINEMENT."""
+    content = _read_agent()
+    block = _get_step_6_block(content)
+    assert "1-5" in block or ("1 =" in block and "5 =" in block), (
+        f"Step 6 must mention 1-5 numerical scoring.\nActual step 6 block:\n{block}"
+    )
+    assert "NEEDS_REFINEMENT" not in block, (
+        "Step 6 must not use binary NEEDS_REFINEMENT rating.\n"
+        f"Actual step 6 block:\n{block}"
+    )
+
+
+def test_step6_has_score_based_refinement_threshold() -> None:
+    """Step 6 must use score-based threshold (score < 3) for triggering refinement."""
+    content = _read_agent()
+    block = _get_step_6_block(content)
+    lower = block.lower()
+    assert "below 3" in lower or "< 3" in lower or "scoring below" in lower, (
+        "Step 6 must mention score-based refinement threshold (e.g. 'below 3').\n"
+        f"Actual step 6 block:\n{block}"
+    )
+
+
+def test_step6_has_programmatic_verification() -> None:
+    """Step 6 must include a programmatic verification step (6e) using verify module."""
+    content = _read_agent()
+    block = _get_step_6_block(content)
+    assert "6e" in block, (
+        "Step 6 must contain a '6e' programmatic verification subsection.\n"
+        f"Actual step 6 block:\n{block}"
+    )
+    assert "compare_labels" in block or "verify" in block.lower(), (
+        "Step 6e must reference programmatic verification (compare_labels or verify).\n"
+        f"Actual step 6 block:\n{block}"
+    )
+
+
 def _get_step_8_block(content: str) -> str:
     start = content.find("8. **Present all four variants**")
     assert start != -1, (
