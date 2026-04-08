@@ -11,3 +11,4 @@ build/
 eval-results/
 *.png
 !eval/diagrams/*.png
+.DS_Store
