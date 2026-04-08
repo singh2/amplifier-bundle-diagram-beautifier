@@ -20,12 +20,16 @@
 #   eval-results/<timestamp>-diagrams/<diagram-name>/<diagram-name>_minimal.png
 #   eval-results/<timestamp>-diagrams/<diagram-name>/<diagram-name>_sketchnote.png
 #   eval-results/<timestamp>-diagrams/<diagram-name>/<diagram-name>_claymation.png
+#   eval-results/<timestamp>-diagrams/<diagram-name>/quality.json
+#
+# Quality report:
+#   eval-results/<timestamp>-diagrams/quality-report.json (aggregate)
 #
 # =============================================================================
 
 name: "evaluate-diagram-beautifier"
-description: "Batch-run all diagrams in eval/diagrams/ through the diagram beautifier, producing Dark Mode Tech, Clean Minimalist, Sketchnote, and Claymation variants for each"
-version: "1.0.0"
+description: "Batch-run all diagrams in eval/diagrams/ through the diagram beautifier, producing four aesthetic variants per diagram with structured quality reporting"
+version: "2.0.0"
 tags: ["evaluation", "diagram-beautifier", "batch"]
 
 context:
@@ -75,20 +79,16 @@ steps:
     output: "diagrams"
 
   # ---------------------------------------------------------------------------
-  # Step 3: Beautify each diagram -- full 8-step workflow, all four variants
+  # Step 3: Beautify each diagram -- full workflow, all four variants
   #
   # Each diagram gets its own subdirectory under the run dir. The agent runs
-  # the complete diagram-beautifier workflow:
-  #   Step 1: Parse topology manifest + semantic node types
-  #   Steps 2-3: Dependency check, Claymation Normal vs Diorama decision
-  #   Step 4: Panel decomposition
-  #   Step 5a: Dark Mode Tech variant (Polished approach)
-  #   Step 5b: Clean Minimalist variant (Polished approach)
-  #   Step 5c: Hand-Drawn Sketchnote variant (Cinematic approach)
-  #   Step 5d: Claymation Studio variant (Cinematic approach, Normal or Diorama)
-  #   Steps 6a-6d: Quality review for all four variants
-  #   Step 7: Assemble panels if multi-panel
-  #   Step 8: Present side-by-side (no stitched output)
+  # the complete diagram-beautifier workflow including:
+  #   Steps 1-5: Parse, dependency check, aesthetic selection, decompose, beautify
+  #   Steps 6a-6e: Quality review (1-5 scoring) + programmatic verification
+  #   Steps 7-8: Assemble panels, present results
+  #
+  # The agent is instructed to save quality scores to a JSON file alongside
+  # the generated images, enabling structured quality aggregation.
   # ---------------------------------------------------------------------------
   - id: "beautify-diagrams"
     foreach: "{{diagrams}}"
@@ -107,11 +107,33 @@ steps:
 
           Input: {{diagram.path}} (format: {{diagram.fmt}})
 
-          Save outputs to {{run_dir}}/{{diagram.name}}/:
+          Save image outputs to {{run_dir}}/{{diagram.name}}/:
           - {{diagram.name}}_darkmode.png
           - {{diagram.name}}_minimal.png
           - {{diagram.name}}_sketchnote.png
           - {{diagram.name}}_claymation.png
+
+          After completing all quality reviews (Steps 6a-6e), save a quality
+          summary as JSON to {{run_dir}}/{{diagram.name}}/quality.json with
+          this structure:
+          {
+            "diagram": "{{diagram.name}}",
+            "format": "{{diagram.fmt}}",
+            "node_count": <from topology manifest>,
+            "edge_count": <from topology manifest>,
+            "variants": {
+              "darkmode": {"label_fidelity": <1-5>, "structural_accuracy": <1-5>},
+              "minimal": {"label_fidelity": <1-5>, "structural_accuracy": <1-5>},
+              "sketchnote": {"label_fidelity": <1-5>, "structural_accuracy": <1-5>},
+              "claymation": {"label_fidelity": <1-5>, "structural_accuracy": <1-5>}
+            },
+            "verification": {
+              "label_completeness": <0.0-1.0 from verify.compare_labels>,
+              "edge_completeness": <0.0-1.0 from verify.compare_edges>,
+              "missing_labels": [<list>],
+              "missing_edges": [<list>]
+            }
+          }
         timeout: 1800
         on_error: "continue"
 
@@ -130,11 +152,106 @@ steps:
         on_error: "continue"
 
   # ---------------------------------------------------------------------------
-  # Step 4: Compile a summary report of all generated outputs
+  # Step 4: Aggregate quality data and compile summary report
+  #
+  # Reads per-diagram quality.json files and produces an aggregate report
+  # with quality scores, complexity band analysis, and threshold detection.
   # ---------------------------------------------------------------------------
   - id: "generate-report"
     type: "bash"
     command: |
+      python3 -c "
+      import os, json, sys
+
+      run_dir = '{{run_dir}}'
+      quality_data = []
+      missing_quality = []
+
+      # Collect per-diagram quality data
+      for name in sorted(os.listdir(run_dir)):
+          diagram_dir = os.path.join(run_dir, name)
+          if not os.path.isdir(diagram_dir):
+              continue
+          quality_file = os.path.join(diagram_dir, 'quality.json')
+          if os.path.exists(quality_file):
+              with open(quality_file) as f:
+                  quality_data.append(json.load(f))
+          else:
+              missing_quality.append(name)
+
+      # Write aggregate report
+      report = {
+          'run_dir': run_dir,
+          'total_diagrams': len(quality_data) + len(missing_quality),
+          'with_quality_data': len(quality_data),
+          'missing_quality_data': missing_quality,
+          'diagrams': quality_data,
+      }
+
+      # Compute aggregate scores if we have data
+      if quality_data:
+          all_label_scores = []
+          all_struct_scores = []
+          all_label_completeness = []
+          all_edge_completeness = []
+          for d in quality_data:
+              for v in d.get('variants', {}).values():
+                  if 'label_fidelity' in v:
+                      all_label_scores.append(v['label_fidelity'])
+                  if 'structural_accuracy' in v:
+                      all_struct_scores.append(v['structural_accuracy'])
+              ver = d.get('verification', {})
+              if 'label_completeness' in ver:
+                  all_label_completeness.append(ver['label_completeness'])
+              if 'edge_completeness' in ver:
+                  all_edge_completeness.append(ver['edge_completeness'])
+
+          report['aggregate'] = {
+              'avg_label_fidelity': round(sum(all_label_scores) / len(all_label_scores), 2) if all_label_scores else None,
+              'avg_structural_accuracy': round(sum(all_struct_scores) / len(all_struct_scores), 2) if all_struct_scores else None,
+              'avg_label_completeness': round(sum(all_label_completeness) / len(all_label_completeness), 3) if all_label_completeness else None,
+              'avg_edge_completeness': round(sum(all_edge_completeness) / len(all_edge_completeness), 3) if all_edge_completeness else None,
+              'min_label_fidelity': min(all_label_scores) if all_label_scores else None,
+              'min_structural_accuracy': min(all_struct_scores) if all_struct_scores else None,
+          }
+
+          # Complexity band analysis
+          bands = {'small (<=10)': [], 'medium (11-25)': [], 'large (26-40)': [], 'very_large (41+)': []}
+          for d in quality_data:
+              nc = d.get('node_count', 0)
+              if nc <= 10:
+                  bands['small (<=10)'].append(d)
+              elif nc <= 25:
+                  bands['medium (11-25)'].append(d)
+              elif nc <= 40:
+                  bands['large (26-40)'].append(d)
+              else:
+                  bands['very_large (41+)'].append(d)
+
+          band_summary = {}
+          for band_name, diagrams in bands.items():
+              if not diagrams:
+                  band_summary[band_name] = {'count': 0}
+                  continue
+              scores = []
+              for d in diagrams:
+                  for v in d.get('variants', {}).values():
+                      if 'structural_accuracy' in v:
+                          scores.append(v['structural_accuracy'])
+              band_summary[band_name] = {
+                  'count': len(diagrams),
+                  'avg_structural_accuracy': round(sum(scores) / len(scores), 2) if scores else None,
+                  'min_structural_accuracy': min(scores) if scores else None,
+              }
+          report['complexity_bands'] = band_summary
+
+      report_path = os.path.join(run_dir, 'quality-report.json')
+      with open(report_path, 'w') as f:
+          json.dump(report, f, indent=2)
+      print(json.dumps(report, indent=2))
+      "
+
+      echo ""
       echo "================================================="
       echo " Diagram Beautifier Evaluation Report"
       echo " Run: {{run_dir}}"
@@ -160,12 +277,8 @@ steps:
       echo ""
       echo "Diagrams processed:    $TOTAL_DIAGRAMS"
       echo "Total images:          $TOTAL_IMAGES"
-      echo "Expected:              84  (21 diagrams × 4 images each)"
+      echo "Expected:              96  (24 diagrams × 4 images each)"
       echo "Failed:                $FAILED"
       echo ""
-      echo "Output directory: {{run_dir}}"
-      echo ""
-      echo "Review outputs:"
-      find "{{run_dir}}" -name "*.png" | sort | while read f; do
-        echo "  open \"$f\""
-      done
+      echo "Quality report:        {{run_dir}}/quality-report.json"
+      echo "Output directory:      {{run_dir}}"
