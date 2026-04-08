@@ -1,0 +1,123 @@
+// Dense Module Dependency Graph -- 18 nodes, 61 edges
+// Tests: high edge density (0.20), stress-test for edge fidelity
+// Density = 61 / (18 * 17) = 0.199 -- far above current max of 0.127
+digraph module_dependencies {
+  rankdir=TB;
+  node [fontname="Helvetica", fontsize=10, shape=box, style="rounded"];
+  edge [fontname="Helvetica", fontsize=8, color="#666666"];
+
+  // --- Modules ---
+  core [label="core", style="rounded,bold"];
+  config [label="config"];
+  logging_mod [label="logging"];
+  utils [label="utils", style="rounded,bold"];
+  auth [label="auth"];
+  database [label="database"];
+  cache [label="cache"];
+  models [label="models"];
+  api [label="api"];
+  serializers [label="serializers"];
+  validators [label="validators"];
+  middleware [label="middleware"];
+  tasks [label="tasks"];
+  events [label="events"];
+  notifications [label="notifications"];
+  search [label="search"];
+  analytics [label="analytics"];
+  admin [label="admin"];
+
+  // --- core (3 deps) ---
+  core -> config;
+  core -> logging_mod;
+  core -> utils;
+
+  // --- config (1 dep) ---
+  config -> utils;
+
+  // --- logging (2 deps) ---
+  logging_mod -> config;
+  logging_mod -> utils;
+
+  // --- auth (5 deps) ---
+  auth -> core;
+  auth -> database;
+  auth -> cache;
+  auth -> models;
+  auth -> config;
+
+  // --- database (4 deps) ---
+  database -> core;
+  database -> config;
+  database -> logging_mod;
+  database -> models;
+
+  // --- cache (3 deps) ---
+  cache -> core;
+  cache -> config;
+  cache -> logging_mod;
+
+  // --- api (6 deps) ---
+  api -> core;
+  api -> auth;
+  api -> models;
+  api -> serializers;
+  api -> validators;
+  api -> middleware;
+
+  // --- models (3 deps) ---
+  models -> core;
+  models -> database;
+  models -> validators;
+
+  // --- serializers (2 deps) ---
+  serializers -> models;
+  serializers -> validators;
+
+  // --- validators (2 deps) ---
+  validators -> core;
+  validators -> config;
+
+  // --- middleware (4 deps) ---
+  middleware -> core;
+  middleware -> auth;
+  middleware -> logging_mod;
+  middleware -> cache;
+
+  // --- tasks (5 deps) ---
+  tasks -> core;
+  tasks -> models;
+  tasks -> database;
+  tasks -> events;
+  tasks -> notifications;
+
+  // --- events (3 deps) ---
+  events -> core;
+  events -> logging_mod;
+  events -> config;
+
+  // --- notifications (4 deps) ---
+  notifications -> core;
+  notifications -> events;
+  notifications -> models;
+  notifications -> config;
+
+  // --- search (4 deps) ---
+  search -> core;
+  search -> models;
+  search -> database;
+  search -> config;
+
+  // --- analytics (5 deps) ---
+  analytics -> core;
+  analytics -> models;
+  analytics -> database;
+  analytics -> events;
+  analytics -> config;
+
+  // --- admin (5 deps) ---
+  admin -> core;
+  admin -> auth;
+  admin -> models;
+  admin -> api;
+  admin -> database;
+}

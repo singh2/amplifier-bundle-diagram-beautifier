@@ -1,0 +1,130 @@
+// E-Commerce Microservice Platform -- 36 nodes, 5 subgraphs
+// Tests: 26-40 node band, 4-panel decomposition, hub-and-spoke + tree topology
+digraph ecommerce_platform {
+  rankdir=TB;
+  compound=true;
+  node [fontname="Helvetica", fontsize=11, shape=box];
+  edge [fontname="Helvetica", fontsize=9];
+
+  // --- Entry Layer ---
+  client [label="Client App", shape=ellipse];
+  cdn [label="CDN"];
+  load_balancer [label="Load Balancer", shape=diamond];
+
+  // --- API Layer (subgraph) ---
+  subgraph cluster_api {
+    label="API Layer";
+    api_gateway [label="API Gateway"];
+    rate_limiter [label="Rate Limiter"];
+    auth_middleware [label="Auth Middleware"];
+    circuit_breaker [label="Circuit Breaker"];
+    config_service [label="Config Service"];
+    service_registry [label="Service Registry"];
+  }
+
+  // --- Core Services (subgraph) ---
+  subgraph cluster_services {
+    label="Core Services";
+    user_svc [label="User Service"];
+    product_svc [label="Product Service"];
+    order_svc [label="Order Service"];
+    payment_svc [label="Payment Service"];
+    inventory_svc [label="Inventory Service"];
+    search_svc [label="Search Service"];
+    recommendation_svc [label="Recommendation Service"];
+    review_svc [label="Review Service"];
+  }
+
+  // --- Data Layer (subgraph) ---
+  subgraph cluster_data {
+    label="Data Layer";
+    user_db [label="User DB", shape=cylinder];
+    product_db [label="Product DB", shape=cylinder];
+    order_db [label="Order DB", shape=cylinder];
+    inventory_db [label="Inventory DB", shape=cylinder];
+    cache_layer [label="Redis Cache", shape=cylinder];
+    search_index [label="Elasticsearch", shape=cylinder];
+    session_store [label="Session Store", shape=cylinder];
+    file_storage [label="File Storage", shape=cylinder];
+  }
+
+  // --- Infrastructure (subgraph) ---
+  subgraph cluster_infra {
+    label="Infrastructure";
+    message_queue [label="Message Queue"];
+    email_worker [label="Email Worker"];
+    sms_worker [label="SMS Worker"];
+    push_worker [label="Push Worker"];
+    notification_svc [label="Notification Service"];
+    monitoring [label="Monitoring"];
+    log_aggregator [label="Log Aggregator"];
+    analytics_svc [label="Analytics Service"];
+    data_warehouse [label="Data Warehouse", shape=cylinder];
+  }
+
+  // --- External Systems (subgraph) ---
+  subgraph cluster_external {
+    label="External Systems";
+    style=dashed;
+    payment_gateway [label="Payment Gateway"];
+    shipping_api [label="Shipping API"];
+  }
+
+  // === Edges: Entry ===
+  client -> cdn;
+  cdn -> load_balancer;
+  load_balancer -> api_gateway;
+
+  // === Edges: API Layer ===
+  api_gateway -> rate_limiter;
+  rate_limiter -> auth_middleware;
+  auth_middleware -> circuit_breaker;
+  config_service -> service_registry;
+  service_registry -> api_gateway [style=dashed, label="discovery"];
+  circuit_breaker -> service_registry [style=dashed, label="health"];
+
+  // === Edges: API -> Services ===
+  circuit_breaker -> user_svc;
+  circuit_breaker -> product_svc;
+  circuit_breaker -> order_svc;
+  circuit_breaker -> search_svc;
+
+  // === Edges: Service -> Data ===
+  user_svc -> user_db;
+  user_svc -> session_store;
+  user_svc -> cache_layer;
+  product_svc -> product_db;
+  product_svc -> cache_layer;
+  product_svc -> file_storage;
+  product_svc -> search_index;
+  search_svc -> search_index;
+  order_svc -> order_db;
+  inventory_svc -> inventory_db;
+  review_svc -> product_db;
+  recommendation_svc -> cache_layer;
+
+  // === Edges: Service -> Service ===
+  order_svc -> inventory_svc [label="reserve"];
+  order_svc -> payment_svc [label="charge"];
+  order_svc -> notification_svc [label="confirm"];
+  product_svc -> recommendation_svc;
+  product_svc -> review_svc;
+
+  // === Edges: Service -> External ===
+  payment_svc -> payment_gateway [label="process"];
+  order_svc -> shipping_api [label="ship"];
+
+  // === Edges: Infrastructure ===
+  notification_svc -> message_queue;
+  message_queue -> email_worker;
+  message_queue -> sms_worker;
+  message_queue -> push_worker;
+
+  // === Edges: Monitoring ===
+  monitoring -> log_aggregator;
+  analytics_svc -> data_warehouse;
+  monitoring -> user_svc [style=dashed];
+  monitoring -> order_svc [style=dashed];
+  monitoring -> product_svc [style=dashed];
+  log_aggregator -> analytics_svc;
+}

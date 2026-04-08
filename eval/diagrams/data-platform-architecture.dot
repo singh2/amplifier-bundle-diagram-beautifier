@@ -1,0 +1,181 @@
+// Data Platform Architecture -- 50 nodes, 8 subgraphs, 1 feedback cycle
+// Tests: 41+ node band, 6-panel decomposition, mixed topology with cycle
+digraph data_platform {
+  rankdir=TB;
+  compound=true;
+  node [fontname="Helvetica", fontsize=10, shape=box];
+  edge [fontname="Helvetica", fontsize=8];
+
+  // --- Data Sources (subgraph) ---
+  subgraph cluster_sources {
+    label="Data Sources";
+    style=dashed;
+    mysql_source [label="MySQL Replicas"];
+    postgres_source [label="PostgreSQL"];
+    api_feeds [label="External API Feeds"];
+    clickstream [label="Clickstream Events"];
+    iot_sensors [label="IoT Sensor Data"];
+    file_uploads [label="File Uploads"];
+  }
+
+  // --- Ingestion Layer (subgraph) ---
+  subgraph cluster_ingestion {
+    label="Ingestion Layer";
+    kafka_cluster [label="Kafka Cluster"];
+    schema_registry [label="Schema Registry"];
+    kafka_connect [label="Kafka Connect"];
+    stream_decoder [label="Stream Decoder"];
+    dead_letter_queue [label="Dead Letter Queue"];
+    ingestion_monitor [label="Ingestion Monitor"];
+  }
+
+  // --- Processing Layer (subgraph) ---
+  subgraph cluster_processing {
+    label="Processing Layer";
+    spark_cluster [label="Spark Cluster"];
+    batch_scheduler [label="Batch Scheduler"];
+    flink_engine [label="Flink Engine"];
+    stream_processor [label="Stream Processor"];
+    data_validator [label="Data Validator"];
+    dedup_engine [label="Dedup Engine"];
+    enrichment_svc [label="Enrichment Service"];
+    transformation_svc [label="Transformation Service"];
+  }
+
+  // --- Storage Layer (subgraph) ---
+  subgraph cluster_storage {
+    label="Storage Layer";
+    data_lake_raw [label="Data Lake (Raw)", shape=cylinder];
+    data_lake_curated [label="Data Lake (Curated)", shape=cylinder];
+    data_warehouse [label="Data Warehouse", shape=cylinder];
+    feature_store [label="Feature Store", shape=cylinder];
+    metadata_catalog [label="Metadata Catalog", shape=cylinder];
+    blob_storage [label="Blob Storage", shape=cylinder];
+    time_series_db [label="Time Series DB", shape=cylinder];
+  }
+
+  // --- ML Pipeline (subgraph) ---
+  subgraph cluster_ml {
+    label="ML Pipeline";
+    experiment_tracker [label="Experiment Tracker"];
+    training_orchestrator [label="Training Orchestrator"];
+    gpu_cluster [label="GPU Cluster"];
+    model_registry [label="Model Registry"];
+    model_serving [label="Model Serving"];
+    ab_test_router [label="A/B Test Router"];
+    feedback_collector [label="Feedback Collector"];
+    retraining_trigger [label="Retraining Trigger"];
+  }
+
+  // --- Serving Layer (subgraph) ---
+  subgraph cluster_serving {
+    label="Serving Layer";
+    graphql_api [label="GraphQL API"];
+    rest_api [label="REST API"];
+    grpc_api [label="gRPC API"];
+    api_cache [label="API Cache", shape=cylinder];
+    cdn_edge [label="CDN Edge"];
+  }
+
+  // --- Governance (subgraph) ---
+  subgraph cluster_governance {
+    label="Data Governance";
+    lineage_tracker [label="Lineage Tracker"];
+    data_quality_svc [label="Data Quality Service"];
+    access_control [label="Access Control"];
+    pii_scanner [label="PII Scanner"];
+    audit_logger [label="Audit Logger"];
+  }
+
+  // --- Monitoring (subgraph) ---
+  subgraph cluster_monitoring {
+    label="Monitoring";
+    metrics_collector [label="Metrics Collector"];
+    alerting_engine [label="Alerting Engine"];
+    dashboard_svc [label="Dashboard Service"];
+    cost_tracker [label="Cost Tracker"];
+    sla_monitor [label="SLA Monitor"];
+  }
+
+  // === Edges: Sources -> Ingestion ===
+  mysql_source -> kafka_connect [label="CDC"];
+  postgres_source -> kafka_connect [label="CDC"];
+  api_feeds -> kafka_cluster;
+  clickstream -> kafka_cluster;
+  iot_sensors -> kafka_cluster;
+  file_uploads -> blob_storage;
+  kafka_connect -> kafka_cluster;
+  kafka_cluster -> schema_registry [dir=both, label="validate"];
+  kafka_cluster -> stream_decoder;
+  stream_decoder -> dead_letter_queue [label="errors"];
+  ingestion_monitor -> kafka_cluster [style=dashed];
+  ingestion_monitor -> dead_letter_queue [style=dashed];
+
+  // === Edges: Ingestion -> Processing ===
+  stream_decoder -> flink_engine;
+  stream_decoder -> data_lake_raw;
+  kafka_cluster -> spark_cluster;
+  batch_scheduler -> spark_cluster [label="trigger"];
+
+  // === Edges: Processing internal ===
+  flink_engine -> stream_processor;
+  spark_cluster -> data_validator;
+  stream_processor -> data_validator;
+  data_validator -> dedup_engine;
+  dedup_engine -> enrichment_svc;
+  enrichment_svc -> transformation_svc;
+
+  // === Edges: Processing -> Storage ===
+  transformation_svc -> data_lake_curated;
+  transformation_svc -> data_warehouse;
+  transformation_svc -> time_series_db;
+  data_lake_curated -> metadata_catalog;
+  data_warehouse -> metadata_catalog;
+
+  // === Edges: Storage -> ML ===
+  data_lake_curated -> training_orchestrator;
+  feature_store -> training_orchestrator;
+  feature_store -> model_serving;
+  training_orchestrator -> experiment_tracker;
+  training_orchestrator -> gpu_cluster;
+  gpu_cluster -> model_registry;
+  model_registry -> model_serving;
+  model_serving -> ab_test_router;
+
+  // === Edges: ML Feedback Cycle ===
+  ab_test_router -> feedback_collector;
+  feedback_collector -> retraining_trigger;
+  retraining_trigger -> training_orchestrator [label="retrain", color=red];
+
+  // === Edges: Storage -> Serving ===
+  data_warehouse -> graphql_api;
+  data_warehouse -> rest_api;
+  time_series_db -> grpc_api;
+  ab_test_router -> rest_api;
+  graphql_api -> api_cache;
+  rest_api -> api_cache;
+  api_cache -> cdn_edge;
+
+  // === Edges: Governance ===
+  lineage_tracker -> metadata_catalog [dir=both];
+  data_quality_svc -> data_validator [label="rules"];
+  data_quality_svc -> data_lake_curated [style=dashed, label="scan"];
+  access_control -> graphql_api;
+  access_control -> rest_api;
+  access_control -> grpc_api;
+  pii_scanner -> data_lake_raw [style=dashed, label="scan"];
+  pii_scanner -> data_lake_curated [style=dashed, label="scan"];
+  audit_logger -> access_control;
+
+  // === Edges: Monitoring ===
+  metrics_collector -> kafka_cluster [style=dashed];
+  metrics_collector -> spark_cluster [style=dashed];
+  metrics_collector -> flink_engine [style=dashed];
+  metrics_collector -> model_serving [style=dashed];
+  alerting_engine -> metrics_collector;
+  alerting_engine -> sla_monitor;
+  dashboard_svc -> metrics_collector;
+  cost_tracker -> gpu_cluster [style=dashed];
+  cost_tracker -> spark_cluster [style=dashed];
+  sla_monitor -> rest_api [style=dashed];
+}
