@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -433,3 +434,57 @@ class TestGenerateReport:
     def test_report_defaults_to_report_html(self, tmp_run_dir: Path) -> None:
         generate_report(tmp_run_dir)
         assert (tmp_run_dir / "report.html").exists()
+
+
+class TestIntegration:
+    """Integration tests using the real eval-results directory."""
+
+    REAL_RUN = Path("eval-results/2026-04-08_160419-diagrams")
+
+    @pytest.fixture(autouse=True)
+    def skip_if_no_real_data(self) -> None:
+        if not self.REAL_RUN.exists():
+            pytest.skip("Real eval-results not available")
+
+    def test_generates_report_from_real_run(self, tmp_path: Path) -> None:
+        output = tmp_path / "report.html"
+        result = generate_report(self.REAL_RUN, output)
+        assert result.exists()
+        content = result.read_text()
+        assert content.startswith("<!DOCTYPE html>")
+        assert len(content) > 5000  # Should be substantial
+
+    def test_real_report_references_existing_images(self, tmp_path: Path) -> None:
+        output = tmp_path / "report.html"
+        generate_report(self.REAL_RUN, output)
+        content = output.read_text()
+        # Check that referenced images actually exist relative to the real run dir
+        img_refs = re.findall(r'src="(\./[^"]+\.png)"', content)
+        assert len(img_refs) > 0, "Report should reference at least some images"
+        for ref in img_refs[:5]:  # Check first 5
+            full_path = self.REAL_RUN / ref
+            assert full_path.exists(), f"Referenced image not found: {ref}"
+
+    def test_real_report_has_all_diagram_names(self, tmp_path: Path) -> None:
+        output = tmp_path / "report.html"
+        generate_report(self.REAL_RUN, output)
+        content = output.read_text()
+        # Load run data to get expected diagram names
+        run = load_run_data(self.REAL_RUN)
+        for d in run.diagrams:
+            assert d.name in content, f"Diagram {d.name} not found in report"
+
+    def test_real_report_loads_quality_data(self, tmp_path: Path) -> None:
+        run = load_run_data(self.REAL_RUN)
+        assert len(run.diagrams) > 0
+        # At least some diagrams should have variant images
+        has_images = any(len(d.variant_images) > 0 for d in run.diagrams)
+        assert has_images, "At least one diagram should have variant images"
+
+    def test_real_report_no_absolute_paths(self, tmp_path: Path) -> None:
+        output = tmp_path / "report.html"
+        generate_report(self.REAL_RUN, output)
+        content = output.read_text()
+        assert "/Users/" not in content
+        assert "/home/" not in content
+        assert "eval-results/" not in content  # Should not have the full path
