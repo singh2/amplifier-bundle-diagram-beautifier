@@ -44,10 +44,21 @@ should stop and look.
 
 | Dimension | Dark Mode Tech + Clean Minimalist | Sketchnote + Claymation |
 |---|---|---|
-| Reference image (PNG input) | Completeness guard | Never |
+| Reference image (PNG input) | Completeness guard | Spatial anchor only |
 | Connector style | Clean / orthogonal | Expressive / gestural |
 | Spatial freedom | Fresh but coherent | Fully compositional |
 | Hero node emphasis | Maintained via color/scale | Dominant visual anchor |
+
+**Complexity-based style substitution (25+ nodes):**
+
+When the topology manifest contains 25 or more nodes, Sketchnote and Claymation
+are replaced with styles better suited to information density:
+
+- **Variant C** becomes **Blueprint / Schematic** instead of Hand-Drawn Sketchnote
+- **Variant D** becomes **Cyberpunk / Neon** instead of Claymation Studio
+
+This substitution occurs automatically in Step 3 (aesthetic selection). Variants A
+(Dark Mode Tech) and B (Clean Minimalist) are unchanged regardless of complexity.
 
 ---
 
@@ -62,6 +73,8 @@ Apply the per-aesthetic shape spec when constructing generation prompts.
 | **Bold Editorial** | Bold rect with thick color border | Bold rect with thick color border | Diamond with bold border | Bold stadium |
 | **Hand-Drawn Sketchnote** | Wobbly outlined rounded rect | Wobbly outlined rounded rect | Wobbly diamond | Wobbly oval |
 | **Claymation Studio** | Sculpted clay blob | Sculpted clay blob | Rounded clay blob | Clay oval |
+| **Blueprint / Schematic** | Outlined rect, dashed border | Outlined rect, dashed border | Outlined diamond, dashed | Outlined oval, dashed |
+| **Cyberpunk / Neon** | Neon-outlined rect, 4px radius | Neon-outlined hexagon | Neon diamond | Neon stadium / pill |
 | **Lego Brick Builder** | Brick-built rectangular construction | Brick-built rectangular construction | Brick diamond | Brick oval |
 
 ---
@@ -75,6 +88,8 @@ Apply the per-aesthetic shape spec when constructing generation prompts.
 | **Bold Editorial** | Heavy straight lines with bold arrowheads matching source-node border color. | — |
 | **Hand-Drawn Sketchnote** | Hand-drawn arrows, slightly wobbly curves, informal arrowheads. | — |
 | **Claymation Studio** | Rope or ribbon connectors, soft curves. | — |
+| **Blueprint / Schematic** | Fine white linework, straight segments with 90-degree turns. Arrowheads are small open triangles. | Grid background provides implicit alignment. All text in stencil/monospace. No color fills — outline only. |
+| **Cyberpunk / Neon** | Thin neon-glow paths, curved with subtle pulse effect. Arrowheads are sharp neon points. Source-to-destination color gradient. | Near-black background (#0A0A1A). CRT scan line overlay. Monospace typography. |
 | **Lego Brick Builder** | Rigid brick-peg connector rods. | — |
 
 ---
@@ -89,6 +104,8 @@ Apply these directives on top of the shared Cinematic rules above.
 | **Hand-Drawn Sketchnote** | Gestural organic spacing between nodes; wobbly arrows with varying weight; hero node gets hand-drawn callout or emphasis circle. |
 | **Claymation Studio — Normal** | Full scene with sculpted characters/objects in clay environment; rope or ribbon connectors; hero node is physically larger or more prominent than surrounding nodes. |
 | **Claymation Studio — Diorama** | Physical scene with clay figures enacting the workflow steps in sequence; nodes staged as characters or props in a shallow-depth environment; hero node is the most elaborately sculpted figure; warm studio lighting; domain-appropriate miniature props. |
+| **Blueprint / Schematic** | Technical drawing aesthetic; white linework on Prussian blue; grid background with measurement markers; all labels in stencil/monospace font; leader lines and dimension callouts where space allows; hero node gets a detail callout or enlarged inset. |
+| **Cyberpunk / Neon** | Dark cyberpunk HUD aesthetic; near-black background with CRT scan lines; neon-outlined nodes with subtle glow; monospace typography; hero node pulses brighter or has a targeting reticle overlay; data readout annotations on high-connectivity nodes. |
 
 ---
 

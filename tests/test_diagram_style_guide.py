@@ -94,9 +94,7 @@ def test_color_category_mapping_guidance_present() -> None:
 def test_four_variants_section_present() -> None:
     """File must contain a '## Four Variants' section heading."""
     content = _read_style_guide()
-    assert "## Four Variants" in content, (
-        "'## Four Variants' section heading not found"
-    )
+    assert "## Four Variants" in content, "'## Four Variants' section heading not found"
 
 
 def test_polished_described_as_document_ready() -> None:
@@ -137,9 +135,9 @@ def test_dark_mode_tech_is_described_as_polished_variant() -> None:
     four_variants_start = content.find("## Four Variants")
     assert four_variants_start != -1, "'## Four Variants' section not found"
     four_variants_block = content[four_variants_start : four_variants_start + 600]
-    assert "Dark Mode Tech" in four_variants_block and "Polished" in four_variants_block, (
-        "Four Variants section must associate Dark Mode Tech with the Polished approach"
-    )
+    assert (
+        "Dark Mode Tech" in four_variants_block and "Polished" in four_variants_block
+    ), "Four Variants section must associate Dark Mode Tech with the Polished approach"
 
 
 def test_clean_minimalist_is_described_as_polished_variant() -> None:
@@ -150,7 +148,9 @@ def test_clean_minimalist_is_described_as_polished_variant() -> None:
     four_variants_block = content[four_variants_start : four_variants_start + 600]
     assert (
         "Clean Minimalist" in four_variants_block and "Polished" in four_variants_block
-    ), "Four Variants section must associate Clean Minimalist with the Polished approach"
+    ), (
+        "Four Variants section must associate Clean Minimalist with the Polished approach"
+    )
 
 
 def test_cinematic_claymation_has_scene_description() -> None:
@@ -168,4 +168,55 @@ def test_cinematic_claymation_has_scene_description() -> None:
     assert claymation_cinematic_row is not None, (
         "Claymation Studio cinematic row must mention 'full scene' — "
         "no single line contained 'Claymation' and 'full scene'."
+    )
+
+
+def test_blueprint_schematic_in_node_shapes_table() -> None:
+    """Node Shapes table must contain a Blueprint / Schematic row."""
+    content = _read_style_guide()
+    lines = content.splitlines()
+    # Find lines in the Node Shapes section that mention Blueprint / Schematic
+    blueprint_row = next(
+        (
+            line
+            for line in lines
+            if "Blueprint / Schematic" in line and "Outlined" in line
+        ),
+        None,
+    )
+    assert blueprint_row is not None, (
+        "Node Shapes table must contain a 'Blueprint / Schematic' row with outlined shapes."
+    )
+
+
+def test_cyberpunk_neon_in_connector_styling_table() -> None:
+    """Connector Styling table must contain a Cyberpunk / Neon row."""
+    content = _read_style_guide()
+    lines = content.splitlines()
+    cyberpunk_row = next(
+        (
+            line
+            for line in lines
+            if "Cyberpunk / Neon" in line and "neon" in line.lower()
+        ),
+        None,
+    )
+    assert cyberpunk_row is not None, (
+        "Connector Styling table must contain a 'Cyberpunk / Neon' row."
+    )
+
+
+def test_complexity_based_style_substitution_present() -> None:
+    """Style guide must contain 'Complexity-based style substitution' section."""
+    content = _read_style_guide()
+    assert "Complexity-based style substitution" in content, (
+        "'Complexity-based style substitution' section not found in style guide."
+    )
+
+
+def test_spatial_anchor_in_key_differences_table() -> None:
+    """Key differences table must contain 'Spatial anchor' for Cinematic reference image."""
+    content = _read_style_guide()
+    assert "Spatial anchor" in content, (
+        "'Spatial anchor' not found in key differences table."
     )
