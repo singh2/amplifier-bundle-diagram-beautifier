@@ -585,3 +585,217 @@ class TestGenerateComparisonReport:
         generate_comparison_report([run_a, run_b], output)
         content = output.read_text()
         assert "trend" in content.lower() or "aggregate" in content.lower()
+
+
+class TestSourceImageFallback:
+    """Test source image resolution from eval/diagrams/ fallback."""
+
+    def test_falls_back_to_eval_diagrams_png(self, tmp_path: Path) -> None:
+        """When _source.png is missing, fall back to eval/diagrams/{name}.png."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        d = run_dir / "my-diagram"
+        d.mkdir()
+        (d / "quality.json").write_text(
+            json.dumps({**QUALITY_2DIM, "diagram": "my-diagram", "format": "png"})
+        )
+
+        eval_dir = tmp_path / "eval" / "diagrams"
+        eval_dir.mkdir(parents=True)
+        (eval_dir / "my-diagram.png").write_bytes(b"PNG_SOURCE")
+
+        data = load_diagram_data(d, eval_diagrams_dir=eval_dir)
+        assert data is not None
+        assert data.source_image is not None
+        assert data.source_image.name == "my-diagram_source.png"
+
+    def test_png_fallback_copies_file_to_diagram_dir(self, tmp_path: Path) -> None:
+        """Fallback copies the source PNG into the diagram output directory."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        d = run_dir / "my-diagram"
+        d.mkdir()
+        (d / "quality.json").write_text(
+            json.dumps({**QUALITY_2DIM, "diagram": "my-diagram", "format": "png"})
+        )
+
+        eval_dir = tmp_path / "eval" / "diagrams"
+        eval_dir.mkdir(parents=True)
+        (eval_dir / "my-diagram.png").write_bytes(b"PNG_SOURCE")
+
+        data = load_diagram_data(d, eval_diagrams_dir=eval_dir)
+        assert data is not None
+        cached = d / "my-diagram_source.png"
+        assert cached.exists()
+        assert cached.read_bytes() == b"PNG_SOURCE"
+
+    def test_no_fallback_when_source_exists(self, tmp_path: Path) -> None:
+        """When _source.png exists, don't use fallback."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        d = run_dir / "my-diagram"
+        d.mkdir()
+        (d / "quality.json").write_text(
+            json.dumps({**QUALITY_2DIM, "diagram": "my-diagram"})
+        )
+        (d / "my-diagram_source.png").write_bytes(b"EXISTING_SOURCE")
+
+        eval_dir = tmp_path / "eval" / "diagrams"
+        eval_dir.mkdir(parents=True)
+        (eval_dir / "my-diagram.png").write_bytes(b"DIFFERENT_SOURCE")
+
+        data = load_diagram_data(d, eval_diagrams_dir=eval_dir)
+        assert data is not None
+        assert data.source_image is not None
+        # Should use the existing _source.png, not the fallback
+        assert data.source_image.read_bytes() == b"EXISTING_SOURCE"
+
+    def test_no_fallback_without_eval_dir(self, tmp_path: Path) -> None:
+        """When eval_diagrams_dir is None, no fallback attempted."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        d = run_dir / "my-diagram"
+        d.mkdir()
+        (d / "quality.json").write_text(
+            json.dumps({**QUALITY_2DIM, "diagram": "my-diagram"})
+        )
+
+        data = load_diagram_data(d)
+        assert data is not None
+        assert data.source_image is None  # No _source.png and no eval_dir
+
+    def test_dot_fallback_renders_and_caches(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """When eval/diagrams/{name}.dot exists, render it and cache as _source.png."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        d = run_dir / "my-diagram"
+        d.mkdir()
+        (d / "quality.json").write_text(
+            json.dumps({**QUALITY_2DIM, "diagram": "my-diagram", "format": "dot"})
+        )
+
+        eval_dir = tmp_path / "eval" / "diagrams"
+        eval_dir.mkdir(parents=True)
+        (eval_dir / "my-diagram.dot").write_text("digraph { A -> B }")
+
+        # Mock render_plain_png to avoid needing graphviz CLI
+        def fake_render(
+            source_or_path: str, fmt: str, output_path: str, **kw: object
+        ) -> str:
+            Path(output_path).write_bytes(b"RENDERED_DOT_PNG")
+            return output_path
+
+        monkeypatch.setattr("diagram_beautifier.viewer.render_plain_png", fake_render)
+
+        data = load_diagram_data(d, eval_diagrams_dir=eval_dir)
+        assert data is not None
+        assert data.source_image is not None
+        assert data.source_image.name == "my-diagram_source.png"
+        assert (d / "my-diagram_source.png").read_bytes() == b"RENDERED_DOT_PNG"
+
+    def test_mmd_fallback_renders_and_caches(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """When eval/diagrams/{name}.mmd exists, render it and cache as _source.png."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        d = run_dir / "my-diagram"
+        d.mkdir()
+        (d / "quality.json").write_text(
+            json.dumps({**QUALITY_2DIM, "diagram": "my-diagram", "format": "mermaid"})
+        )
+
+        eval_dir = tmp_path / "eval" / "diagrams"
+        eval_dir.mkdir(parents=True)
+        (eval_dir / "my-diagram.mmd").write_text("graph TD; A-->B")
+
+        def fake_render(
+            source_or_path: str, fmt: str, output_path: str, **kw: object
+        ) -> str:
+            Path(output_path).write_bytes(b"RENDERED_MMD_PNG")
+            return output_path
+
+        monkeypatch.setattr("diagram_beautifier.viewer.render_plain_png", fake_render)
+
+        data = load_diagram_data(d, eval_diagrams_dir=eval_dir)
+        assert data is not None
+        assert data.source_image is not None
+        assert data.source_image.name == "my-diagram_source.png"
+        assert (d / "my-diagram_source.png").read_bytes() == b"RENDERED_MMD_PNG"
+
+    def test_render_failure_leaves_source_none(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """If rendering fails, source_image stays None (no crash)."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        d = run_dir / "my-diagram"
+        d.mkdir()
+        (d / "quality.json").write_text(
+            json.dumps({**QUALITY_2DIM, "diagram": "my-diagram", "format": "dot"})
+        )
+
+        eval_dir = tmp_path / "eval" / "diagrams"
+        eval_dir.mkdir(parents=True)
+        (eval_dir / "my-diagram.dot").write_text("digraph { A -> B }")
+
+        def failing_render(
+            source_or_path: str, fmt: str, output_path: str, **kw: object
+        ) -> str:
+            raise RuntimeError("graphviz not installed")
+
+        monkeypatch.setattr(
+            "diagram_beautifier.viewer.render_plain_png", failing_render
+        )
+
+        data = load_diagram_data(d, eval_diagrams_dir=eval_dir)
+        assert data is not None
+        assert data.source_image is None
+
+    def test_load_run_data_passes_eval_dir(self, tmp_path: Path) -> None:
+        """load_run_data forwards eval_diagrams_dir to load_diagram_data."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        d = run_dir / "my-diagram"
+        d.mkdir()
+        (d / "quality.json").write_text(
+            json.dumps({**QUALITY_2DIM, "diagram": "my-diagram", "format": "png"})
+        )
+
+        eval_dir = tmp_path / "eval" / "diagrams"
+        eval_dir.mkdir(parents=True)
+        (eval_dir / "my-diagram.png").write_bytes(b"PNG_SOURCE")
+
+        run = load_run_data(run_dir, eval_diagrams_dir=eval_dir)
+        assert len(run.diagrams) == 1
+        assert run.diagrams[0].source_image is not None
+        assert run.diagrams[0].source_image.name == "my-diagram_source.png"
+
+    def test_generate_report_auto_discovers_eval_dir(self, tmp_path: Path) -> None:
+        """generate_report finds eval/diagrams/ relative to the run directory."""
+        # Create project layout: eval-results/run-dir/ and eval/diagrams/
+        eval_results = tmp_path / "eval-results"
+        eval_results.mkdir()
+        run_dir = eval_results / "2026-04-08_test-run"
+        run_dir.mkdir()
+        d = run_dir / "my-diagram"
+        d.mkdir()
+        (d / "quality.json").write_text(
+            json.dumps({**QUALITY_2DIM, "diagram": "my-diagram", "format": "png"})
+        )
+        for v in VARIANT_NAMES:
+            (d / f"my-diagram_{v}.png").write_bytes(b"PNG")
+
+        eval_dir = tmp_path / "eval" / "diagrams"
+        eval_dir.mkdir(parents=True)
+        (eval_dir / "my-diagram.png").write_bytes(b"PNG_SOURCE")
+
+        output = run_dir / "report.html"
+        generate_report(run_dir, output)
+
+        # The source should have been cached
+        cached = d / "my-diagram_source.png"
+        assert cached.exists()
+        assert cached.read_bytes() == b"PNG_SOURCE"

@@ -15,10 +15,16 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
+import shutil
 from dataclasses import dataclass, field
 from html import escape
 from pathlib import Path
 from statistics import mean
+
+from diagram_beautifier.renderer import render_plain_png
+
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -83,8 +89,63 @@ class RunData:
 # ---------------------------------------------------------------------------
 
 
-def load_diagram_data(diagram_dir: Path) -> DiagramData | None:
+def _resolve_source_fallback(
+    name: str,
+    diagram_dir: Path,
+    eval_diagrams_dir: Path,
+) -> Path | None:
+    """Try to find a source image in *eval_diagrams_dir* and cache it locally.
+
+    Checks for ``{name}.png``, ``{name}.dot``, and ``{name}.mmd`` in order.
+    For ``.dot`` / ``.mmd`` files the source is rendered via
+    :func:`render_plain_png`.  The result is written to
+    ``{diagram_dir}/{name}_source.png`` so subsequent calls find it directly.
+
+    Returns the cached path on success, or ``None`` on failure.
+    """
+    source_cache = diagram_dir / f"{name}_source.png"
+
+    # 1. Direct PNG copy
+    png_candidate = eval_diagrams_dir / f"{name}.png"
+    if png_candidate.exists():
+        shutil.copy2(png_candidate, source_cache)
+        return source_cache
+
+    # 2. Render .dot source
+    dot_candidate = eval_diagrams_dir / f"{name}.dot"
+    if dot_candidate.exists():
+        try:
+            render_plain_png(str(dot_candidate), "dot", str(source_cache))
+            return source_cache
+        except Exception:
+            logger.warning("Failed to render %s, skipping source image", dot_candidate)
+            return None
+
+    # 3. Render .mmd source
+    mmd_candidate = eval_diagrams_dir / f"{name}.mmd"
+    if mmd_candidate.exists():
+        try:
+            render_plain_png(str(mmd_candidate), "mermaid", str(source_cache))
+            return source_cache
+        except Exception:
+            logger.warning("Failed to render %s, skipping source image", mmd_candidate)
+            return None
+
+    return None
+
+
+def load_diagram_data(
+    diagram_dir: Path,
+    *,
+    eval_diagrams_dir: Path | None = None,
+) -> DiagramData | None:
     """Load quality data and discover images for a single diagram directory.
+
+    Args:
+        diagram_dir: Directory containing quality.json and variant PNGs.
+        eval_diagrams_dir: Optional fallback directory (e.g. ``eval/diagrams/``)
+            to search for original source files when ``{name}_source.png`` is
+            missing from *diagram_dir*.
 
     Returns None if quality.json is missing.
     """
@@ -109,9 +170,13 @@ def load_diagram_data(diagram_dir: Path) -> DiagramData | None:
         if png_path.exists():
             variant_images[variant] = png_path
 
-    # Discover source image
+    # Discover source image — primary location first
     source_path = diagram_dir / f"{name}_source.png"
-    source_image = source_path if source_path.exists() else None
+    source_image: Path | None = source_path if source_path.exists() else None
+
+    # Fallback: resolve from eval/diagrams/ directory
+    if source_image is None and eval_diagrams_dir is not None:
+        source_image = _resolve_source_fallback(name, diagram_dir, eval_diagrams_dir)
 
     return DiagramData(
         name=name,
@@ -125,13 +190,23 @@ def load_diagram_data(diagram_dir: Path) -> DiagramData | None:
     )
 
 
-def load_run_data(run_dir: Path) -> RunData:
-    """Load all diagram data from an eval run directory."""
+def load_run_data(
+    run_dir: Path,
+    *,
+    eval_diagrams_dir: Path | None = None,
+) -> RunData:
+    """Load all diagram data from an eval run directory.
+
+    Args:
+        run_dir: Root directory of the eval run.
+        eval_diagrams_dir: Optional fallback directory for source images,
+            forwarded to :func:`load_diagram_data`.
+    """
     diagrams: list[DiagramData] = []
     for entry in sorted(run_dir.iterdir()):
         if not entry.is_dir():
             continue
-        diagram = load_diagram_data(entry)
+        diagram = load_diagram_data(entry, eval_diagrams_dir=eval_diagrams_dir)
         if diagram is not None:
             diagrams.append(diagram)
     return RunData(run_dir=run_dir, diagrams=diagrams)
@@ -709,14 +784,32 @@ function closeLightbox() {
 # ---------------------------------------------------------------------------
 
 
-def generate_report(run_dir: Path, output_path: Path | None = None) -> Path:
+def generate_report(
+    run_dir: Path,
+    output_path: Path | None = None,
+    *,
+    eval_diagrams_dir: Path | None = None,
+) -> Path:
     """Generate a self-contained HTML report for an eval run.
 
     Assembles Grid, Detail, and Dashboard views into one HTML file with
     inline CSS and JS.  All image paths are relative to *run_dir* so the
     report works when opened from that directory.
+
+    Args:
+        run_dir: Root directory of the eval run.
+        output_path: Where to write the HTML report.
+        eval_diagrams_dir: Optional fallback directory for source images.
+            If not provided, the standard project layout
+            ``run_dir/../../eval/diagrams/`` is tried automatically.
     """
-    run = load_run_data(run_dir)
+    # Auto-discover eval/diagrams/ when not explicitly provided
+    if eval_diagrams_dir is None:
+        candidate = run_dir.parent.parent / "eval" / "diagrams"
+        if candidate.is_dir():
+            eval_diagrams_dir = candidate
+
+    run = load_run_data(run_dir, eval_diagrams_dir=eval_diagrams_dir)
 
     if output_path is None:
         output_path = run_dir / "report.html"
@@ -969,8 +1062,18 @@ def main() -> None:
         default=None,
         help="Output path for the report (default: <run_dir>/report.html)",
     )
+    parser.add_argument(
+        "--eval-dir",
+        type=Path,
+        default=None,
+        help=(
+            "Path to the eval/diagrams/ directory containing original source "
+            "files.  When omitted, auto-discovered from the standard project "
+            "layout (run_dir/../../eval/diagrams/)."
+        ),
+    )
     args = parser.parse_args()
-    result = generate_report(args.run_dir, args.output)
+    result = generate_report(args.run_dir, args.output, eval_diagrams_dir=args.eval_dir)
     print(f"Report generated: {result}")
 
 
