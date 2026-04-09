@@ -15,6 +15,7 @@ from diagram_beautifier.viewer import (
     generate_dashboard_html,
     generate_detail_html,
     generate_grid_html,
+    generate_report,
     load_diagram_data,
     load_run_data,
     score_color,
@@ -388,3 +389,47 @@ class TestGenerateDashboardHtml:
         run = load_run_data(run_dir)
         html = generate_dashboard_html(run)
         assert "only-diagram" in html or "test-diagram" in html
+
+
+class TestGenerateReport:
+    def test_produces_valid_html(self, tmp_run_dir: Path) -> None:
+        output = tmp_run_dir / "report.html"
+        generate_report(tmp_run_dir, output)
+        assert output.exists()
+        content = output.read_text()
+        assert content.startswith("<!DOCTYPE html>")
+        assert "</html>" in content
+
+    def test_report_contains_all_three_tabs(self, tmp_run_dir: Path) -> None:
+        output = tmp_run_dir / "report.html"
+        generate_report(tmp_run_dir, output)
+        content = output.read_text()
+        assert "Grid" in content
+        assert "Detail" in content or "Details" in content
+        assert "Dashboard" in content
+
+    def test_report_contains_inline_css(self, tmp_run_dir: Path) -> None:
+        output = tmp_run_dir / "report.html"
+        generate_report(tmp_run_dir, output)
+        content = output.read_text()
+        assert "<style>" in content
+
+    def test_report_contains_inline_js(self, tmp_run_dir: Path) -> None:
+        output = tmp_run_dir / "report.html"
+        generate_report(tmp_run_dir, output)
+        content = output.read_text()
+        assert "<script>" in content
+        assert "showDetail" in content
+        assert "sortGrid" in content
+
+    def test_report_has_relative_image_paths(self, tmp_run_dir: Path) -> None:
+        output = tmp_run_dir / "report.html"
+        generate_report(tmp_run_dir, output)
+        content = output.read_text()
+        assert "./test-diagram/" in content
+        assert "test-diagram_darkmode.png" in content
+        assert str(tmp_run_dir) not in content  # no absolute paths
+
+    def test_report_defaults_to_report_html(self, tmp_run_dir: Path) -> None:
+        generate_report(tmp_run_dir)
+        assert (tmp_run_dir / "report.html").exists()

@@ -13,6 +13,7 @@ Usage:
 
 from __future__ import annotations
 
+import argparse
 import json
 from dataclasses import dataclass, field
 from html import escape
@@ -490,3 +491,361 @@ def generate_dashboard_html(run: RunData) -> str:
     parts.append("</div>")  # close worst-performers
 
     return "\n".join(parts)
+
+
+# ---------------------------------------------------------------------------
+# CSS & JS constants for the full report
+# ---------------------------------------------------------------------------
+
+REPORT_CSS = """\
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#0d1117;color:#c9d1d9;font-family:system-ui,-apple-system,sans-serif;line-height:1.6}
+.container{max-width:1400px;margin:0 auto;padding:1rem}
+h1{color:#f0f6fc;font-size:1.8rem;margin-bottom:.5rem}
+h2{color:#f0f6fc;font-size:1.4rem;margin:1rem 0 .5rem}
+h3{color:#e6edf3;font-size:1.1rem;margin:.5rem 0}
+h4{color:#c9d1d9;font-size:.95rem;margin:.5rem 0}
+
+/* Tabs */
+.tabs{display:flex;gap:.5rem;border-bottom:1px solid #30363d;margin-bottom:1rem;padding-bottom:0}
+.tab{padding:.5rem 1rem;cursor:pointer;border:1px solid transparent;border-bottom:none;
+     border-radius:6px 6px 0 0;background:transparent;color:#8b949e;font-size:.9rem}
+.tab:hover{color:#c9d1d9}
+.tab.active{background:#161b22;color:#f0f6fc;border-color:#30363d}
+.tab-content{display:none}
+.tab-content.active{display:block}
+
+/* Controls */
+.controls{display:flex;gap:.5rem;margin-bottom:1rem}
+.controls select{background:#161b22;color:#c9d1d9;border:1px solid #30363d;padding:.4rem .6rem;
+                  border-radius:6px;font-size:.85rem}
+
+/* Grid */
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:1rem}
+.card{background:#161b22;border:1px solid #30363d;border-radius:8px;overflow:hidden;
+      cursor:pointer;transition:border-color .2s}
+.card:hover{border-color:#58a6ff}
+.card img,.card-thumb{width:100%;height:180px;object-fit:cover;background:#0d1117}
+.card-body{padding:.75rem}
+.badge{display:inline-block;padding:.15rem .5rem;border-radius:12px;font-size:.75rem;
+       background:#30363d;color:#8b949e;margin-right:.5rem}
+.score{font-weight:bold;font-size:1rem}
+.score.green,.score-green{color:#3fb950}
+.score.yellow,.score-yellow{color:#d29922}
+.score.red,.score-red{color:#f85149}
+.verification-bars,.verification{margin-top:.4rem}
+.vbar,.bar{height:16px;border-radius:3px;background:#21262d;margin-bottom:.25rem;
+           font-size:.7rem;color:#c9d1d9;line-height:16px;padding-left:4px;overflow:hidden}
+.vbar-fill{height:100%;border-radius:3px}
+.complexity{font-size:.8rem;color:#8b949e}
+
+/* Detail */
+.detail-view{margin-bottom:2rem;padding:1rem;background:#161b22;border:1px solid #30363d;
+             border-radius:8px}
+.image-strip{display:flex;gap:.75rem;overflow-x:auto;padding:.5rem 0}
+.image-strip img,.strip-img{max-height:220px;border-radius:6px;cursor:pointer;
+                            border:1px solid #30363d}
+.strip-label{text-align:center;font-size:.8rem;color:#8b949e;margin-top:.25rem}
+.placeholder{width:200px;height:200px;background:#21262d;border-radius:6px;display:flex;
+             align-items:center;justify-content:center;color:#484f58;font-size:.85rem}
+.no-source{width:200px;height:200px;background:#21262d;border-radius:6px;display:flex;
+           align-items:center;justify-content:center;color:#484f58;font-size:.85rem}
+.variant{text-align:center}
+.variant label{display:block;font-size:.8rem;color:#8b949e;margin-top:.25rem}
+.heatmap{width:100%;border-collapse:collapse;margin:1rem 0}
+.heatmap th,.heatmap td{padding:.4rem .6rem;border:1px solid #30363d;text-align:center;
+                        font-size:.85rem}
+.heatmap th{background:#21262d;color:#8b949e}
+.score-cell{font-weight:bold}
+.score-na{color:#484f58;font-style:italic}
+.topology-diff{margin-top:1rem;padding:.75rem;background:#0d1117;border-radius:6px}
+.topology-diff p{margin:.25rem 0}
+.topology-diff ul{margin-left:1.2rem;margin-top:.25rem}
+.topology-diff li{font-size:.85rem;color:#f85149}
+.diff-stats{display:flex;gap:1rem;margin-bottom:.5rem}
+.diff-tables{display:flex;gap:1rem;flex-wrap:wrap}
+.diff-table{flex:1;min-width:200px}
+.missing-list{list-style:disc;padding-left:1.2rem}
+
+/* Dashboard */
+.key-metrics{display:flex;flex-wrap:wrap;gap:1rem;margin-bottom:1.5rem}
+.key-metrics>div,.key-metric{flex:1;min-width:140px;background:#161b22;
+                              border:1px solid #30363d;border-radius:8px;
+                              padding:.75rem;text-align:center}
+.key-metrics strong,.metric-label{display:block;font-size:.8rem;color:#8b949e;
+                                  margin-bottom:.25rem}
+.key-metrics span,.metric-value{font-size:1.3rem;font-weight:bold;color:#f0f6fc}
+.bar-chart{margin:1rem 0}
+.bar-row{display:flex;align-items:center;margin-bottom:.5rem}
+.bar-label{width:180px;font-size:.85rem;color:#8b949e;flex-shrink:0}
+.bar-track{flex:1;height:20px;background:#21262d;border-radius:4px;overflow:hidden;
+           margin:0 .5rem}
+.bar-fill{height:100%;border-radius:4px;transition:width .3s}
+.bar-fill.green,.bar-green{background:#238636}
+.bar-fill.yellow,.bar-yellow{background:#9e6a03}
+.bar-fill.red,.bar-red{background:#da3633}
+.bar-value{width:40px;font-size:.85rem;color:#c9d1d9;text-align:right}
+.weakest-note{margin:1rem 0;padding:.5rem .75rem;background:#2d1b00;
+              border:1px solid #9e6a03;border-radius:6px;font-size:.9rem}
+.complexity-table{width:100%;border-collapse:collapse;margin:1rem 0}
+.complexity-table th,.complexity-table td{padding:.5rem .75rem;border:1px solid #30363d;
+                                          text-align:left;font-size:.85rem}
+.complexity-table th{background:#21262d;color:#8b949e}
+.worst-performers{margin-top:1rem}
+.worst-performers ol{margin-left:1.5rem}
+.worst-performers li{margin:.3rem 0}
+.worst-performers a{color:#58a6ff;text-decoration:none}
+.worst-performers a:hover{text-decoration:underline}
+
+/* Lightbox */
+.lightbox{display:none;position:fixed;top:0;left:0;width:100%;height:100%;
+          background:rgba(0,0,0,.85);z-index:1000;align-items:center;
+          justify-content:center;cursor:pointer}
+.lightbox.active{display:flex}
+.lightbox img{max-width:90%;max-height:90%;border-radius:8px}
+
+/* Detail navigation */
+.detail-nav{display:flex;align-items:center;gap:.5rem;margin:1rem 0;flex-wrap:wrap}
+.detail-nav button{background:#21262d;color:#c9d1d9;border:1px solid #30363d;
+                   padding:.4rem .8rem;border-radius:6px;cursor:pointer;font-size:.85rem}
+.detail-nav button:hover{background:#30363d}
+.detail-nav select{background:#161b22;color:#c9d1d9;border:1px solid #30363d;
+                   padding:.4rem .6rem;border-radius:6px;font-size:.85rem}
+"""
+
+REPORT_JS = """\
+let diagramNames = [];
+let currentIndex = 0;
+
+function initDiagrams(names) {
+    diagramNames = names;
+}
+
+function showTab(name) {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(
+        c => c.classList.remove('active')
+    );
+    const tab = document.querySelector('.tab[data-tab="' + name + '"]');
+    const content = document.getElementById('tab-' + name);
+    if (tab) tab.classList.add('active');
+    if (content) content.classList.add('active');
+}
+
+function showDetail(name) {
+    showTab('detail');
+    const idx = diagramNames.indexOf(name);
+    if (idx >= 0) currentIndex = idx;
+    document.querySelectorAll('.detail-view').forEach(
+        d => d.style.display = 'none'
+    );
+    const el = document.getElementById('detail-' + name);
+    if (el) {
+        el.style.display = 'block';
+        el.scrollIntoView({behavior: 'smooth', block: 'start'});
+    }
+    const sel = document.getElementById('detail-select');
+    if (sel) sel.value = name;
+}
+
+function prevDetail() {
+    if (diagramNames.length === 0) return;
+    currentIndex = (currentIndex - 1 + diagramNames.length)
+                   % diagramNames.length;
+    showDetail(diagramNames[currentIndex]);
+}
+
+function nextDetail() {
+    if (diagramNames.length === 0) return;
+    currentIndex = (currentIndex + 1) % diagramNames.length;
+    showDetail(diagramNames[currentIndex]);
+}
+
+function sortGrid(key) {
+    const grid = document.querySelector('.grid');
+    if (!grid) return;
+    const cards = Array.from(grid.querySelectorAll('.card'));
+    cards.sort((a, b) => {
+        if (key === 'score')
+            return parseFloat(b.dataset.score) - parseFloat(a.dataset.score);
+        if (key === 'name')
+            return a.dataset.name.localeCompare(b.dataset.name);
+        if (key === 'complexity')
+            return parseInt(b.dataset.complexity)
+                   - parseInt(a.dataset.complexity);
+        if (key === 'format')
+            return a.dataset.format.localeCompare(b.dataset.format);
+        return 0;
+    });
+    cards.forEach(c => grid.appendChild(c));
+}
+
+function filterGrid() {
+    const sel = document.getElementById('filter-format');
+    if (!sel) return;
+    const val = sel.value;
+    document.querySelectorAll('.card').forEach(c => {
+        c.style.display = (val === 'all' || c.dataset.format === val)
+                          ? '' : 'none';
+    });
+}
+
+function openLightbox(src) {
+    const lb = document.getElementById('lightbox');
+    if (!lb) return;
+    lb.querySelector('img').src = src;
+    lb.classList.add('active');
+}
+
+function closeLightbox() {
+    const lb = document.getElementById('lightbox');
+    if (lb) lb.classList.remove('active');
+}
+"""
+
+
+# ---------------------------------------------------------------------------
+# Full report assembly
+# ---------------------------------------------------------------------------
+
+
+def generate_report(run_dir: Path, output_path: Path | None = None) -> Path:
+    """Generate a self-contained HTML report for an eval run.
+
+    Assembles Grid, Detail, and Dashboard views into one HTML file with
+    inline CSS and JS.  All image paths are relative to *run_dir* so the
+    report works when opened from that directory.
+    """
+    run = load_run_data(run_dir)
+
+    if output_path is None:
+        output_path = run_dir / "report.html"
+
+    # Generate the three view fragments
+    grid_html = generate_grid_html(run)
+    detail_sections: list[str] = []
+    for diagram in run.diagrams:
+        detail_sections.append(
+            f'<div id="detail-{escape(diagram.name)}" class="detail-view">'
+            f"<h2>{escape(diagram.name)}</h2>"
+            f"{generate_detail_html(diagram)}"
+            f"</div>"
+        )
+    dashboard_html = generate_dashboard_html(run)
+
+    diagram_names = [d.name for d in run.diagrams]
+    names_js = ", ".join(f'"{escape(n)}"' for n in diagram_names)
+
+    # Detail navigation: prev/next + dropdown
+    options = "".join(
+        f'<option value="{escape(n)}">{escape(n)}</option>' for n in diagram_names
+    )
+    detail_nav = (
+        '<div class="detail-nav">'
+        '<button onclick="prevDetail()">&larr; Prev</button>'
+        '<select id="detail-select"'
+        ' onchange="showDetail(this.value)">'
+        f"{options}</select>"
+        '<button onclick="nextDetail()">Next &rarr;</button>'
+        "</div>"
+    )
+
+    run_name = escape(run_dir.name)
+
+    html = (
+        "<!DOCTYPE html>\n"
+        '<html lang="en">\n'
+        "<head>\n"
+        '<meta charset="utf-8">\n'
+        '<meta name="viewport"'
+        ' content="width=device-width, initial-scale=1">\n'
+        f"<title>Eval Report – {run_name}</title>\n"
+        "<style>\n"
+        f"{REPORT_CSS}"
+        "</style>\n"
+        "</head>\n"
+        "<body>\n"
+        '<div class="container">\n'
+        f"<h1>Eval Report"
+        f' <small style="color:#8b949e;font-size:.7em">'
+        f"{run_name}</small></h1>\n"
+        "\n"
+        '<div class="tabs">\n'
+        '<button class="tab active" data-tab="grid"'
+        " onclick=\"showTab('grid')\">Grid</button>\n"
+        '<button class="tab" data-tab="detail"'
+        " onclick=\"showTab('detail')\">Detail</button>\n"
+        '<button class="tab" data-tab="dashboard"'
+        " onclick=\"showTab('dashboard')\">Dashboard</button>\n"
+        "</div>\n"
+        "\n"
+        '<div id="tab-grid" class="tab-content active">\n'
+        f"{grid_html}\n"
+        "</div>\n"
+        "\n"
+        '<div id="tab-detail" class="tab-content">\n'
+        f"{detail_nav}\n"
+        f"{''.join(detail_sections)}\n"
+        "</div>\n"
+        "\n"
+        '<div id="tab-dashboard" class="tab-content">\n'
+        f"{dashboard_html}\n"
+        "</div>\n"
+        "\n"
+        "</div><!-- /container -->\n"
+        "\n"
+        '<div id="lightbox" class="lightbox"'
+        ' onclick="closeLightbox()">\n'
+        '<img src="" alt="lightbox">\n'
+        "</div>\n"
+        "\n"
+        "<script>\n"
+        f"{REPORT_JS}"
+        f"initDiagrams([{names_js}]);\n"
+        "document.addEventListener('DOMContentLoaded', function() {\n"
+        "    var sortSel = document.getElementById('sort-by');\n"
+        "    if (sortSel) sortSel.addEventListener("
+        "'change', function() { sortGrid(this.value); });\n"
+        "    var filterSel = document.getElementById('filter-format');\n"
+        "    if (filterSel) filterSel.addEventListener("
+        "'change', filterGrid);\n"
+        "    if (diagramNames.length > 0)"
+        " showDetail(diagramNames[0]);\n"
+        "});\n"
+        "</script>\n"
+        "</body>\n"
+        "</html>"
+    )
+
+    output_path.write_text(html)
+    return output_path
+
+
+# ---------------------------------------------------------------------------
+# CLI
+# ---------------------------------------------------------------------------
+
+
+def main() -> None:
+    """CLI entry point for generating eval reports."""
+    parser = argparse.ArgumentParser(
+        description="Generate an HTML eval report from a run directory.",
+    )
+    parser.add_argument(
+        "run_dir",
+        type=Path,
+        help="Path to the eval run directory",
+    )
+    parser.add_argument(
+        "--output",
+        type=Path,
+        default=None,
+        help="Output path for the report (default: <run_dir>/report.html)",
+    )
+    args = parser.parse_args()
+    result = generate_report(args.run_dir, args.output)
+    print(f"Report generated: {result}")
+
+
+if __name__ == "__main__":
+    main()
