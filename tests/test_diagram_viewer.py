@@ -824,3 +824,269 @@ class TestLightboxSplitScreen:
         html = generate_detail_html(d)
         # Should still have openLightbox calls but with empty source
         assert "openLightbox(this.src," in html
+
+
+# ---------------------------------------------------------------------------
+# Per-variant verification format (new schema)
+# ---------------------------------------------------------------------------
+
+QUALITY_PER_VARIANT_VERIFICATION = {
+    "diagram": "test-pvv",
+    "format": "dot",
+    "node_count": 30,
+    "edge_count": 35,
+    "style_override": True,
+    "variants": {
+        "darkmode": {
+            "actual_style": "Dark Mode Tech",
+            "content_accuracy": 4,
+            "layout_quality": 4,
+            "visual_clarity": 5,
+            "prompt_fidelity": 4,
+            "aesthetic_fidelity": 4,
+            "label_fidelity": 3,
+            "structural_accuracy": 5,
+            "color_category_fidelity": 4,
+            "verification": {
+                "label_completeness": 0.9,
+                "edge_completeness": 0.8,
+                "missing_labels": ["NodeA"],
+                "missing_edges": ["X -> Y"],
+                "duplicates": ["Dup1"],
+            },
+        },
+        "minimal": {
+            "actual_style": "Clean Minimalist",
+            "content_accuracy": 3,
+            "layout_quality": 4,
+            "visual_clarity": 5,
+            "prompt_fidelity": 4,
+            "aesthetic_fidelity": 3,
+            "label_fidelity": 4,
+            "structural_accuracy": 4,
+            "color_category_fidelity": 3,
+            "verification": {
+                "label_completeness": 1.0,
+                "edge_completeness": 0.9,
+                "missing_labels": [],
+                "missing_edges": ["P -> Q"],
+                "duplicates": [],
+            },
+        },
+        "sketchnote": {
+            "actual_style": "Blueprint / Schematic",
+            "content_accuracy": 5,
+            "layout_quality": 3,
+            "visual_clarity": 3,
+            "prompt_fidelity": 4,
+            "aesthetic_fidelity": 5,
+            "label_fidelity": 2,
+            "structural_accuracy": 3,
+            "color_category_fidelity": 4,
+            "verification": {
+                "label_completeness": 0.7,
+                "edge_completeness": 0.6,
+                "missing_labels": ["NodeB", "NodeC"],
+                "missing_edges": ["A -> B", "C -> D"],
+                "duplicates": ["Dup2", "Dup3"],
+            },
+        },
+        "claymation": {
+            "actual_style": "Cyberpunk / Neon",
+            "content_accuracy": 4,
+            "layout_quality": 4,
+            "visual_clarity": 4,
+            "prompt_fidelity": 3,
+            "aesthetic_fidelity": 4,
+            "label_fidelity": 5,
+            "structural_accuracy": 5,
+            "color_category_fidelity": 5,
+            "verification": {
+                "label_completeness": 0.8,
+                "edge_completeness": 1.0,
+                "missing_labels": ["NodeD"],
+                "missing_edges": [],
+                "duplicates": [],
+            },
+        },
+    },
+}
+
+
+@pytest.fixture()
+def tmp_pvv_run_dir(tmp_path: Path) -> Path:
+    """Run directory with per-variant verification data (new format)."""
+    run_dir = tmp_path / "run-pvv"
+    run_dir.mkdir()
+    d = run_dir / "test-pvv"
+    d.mkdir()
+    (d / "quality.json").write_text(json.dumps(QUALITY_PER_VARIANT_VERIFICATION))
+    for variant in VARIANT_NAMES:
+        (d / f"test-pvv_{variant}.png").write_bytes(b"PNG_FAKE")
+    (d / "test-pvv_source.png").write_bytes(b"PNG_SOURCE")
+    return run_dir
+
+
+class TestPerVariantVerification:
+    """Tests for per_variant_verification property."""
+
+    def test_returns_per_variant_data_when_present(self, tmp_pvv_run_dir: Path) -> None:
+        data = load_diagram_data(tmp_pvv_run_dir / "test-pvv")
+        assert data is not None
+        pvv = data.per_variant_verification
+        assert len(pvv) == 4
+        assert "darkmode" in pvv
+        assert pvv["darkmode"]["label_completeness"] == 0.9
+        assert pvv["darkmode"]["duplicates"] == ["Dup1"]
+
+    def test_returns_empty_for_old_format(self, tmp_run_dir: Path) -> None:
+        data = load_diagram_data(tmp_run_dir / "test-diagram")
+        assert data is not None
+        pvv = data.per_variant_verification
+        assert pvv == {}
+
+    def test_each_variant_has_verification_keys(self, tmp_pvv_run_dir: Path) -> None:
+        data = load_diagram_data(tmp_pvv_run_dir / "test-pvv")
+        assert data is not None
+        pvv = data.per_variant_verification
+        for vname in VARIANT_NAMES:
+            assert vname in pvv
+            ver = pvv[vname]
+            assert "label_completeness" in ver
+            assert "edge_completeness" in ver
+            assert "missing_labels" in ver
+            assert "missing_edges" in ver
+            assert "duplicates" in ver
+
+
+class TestAggregateVerification:
+    """Tests for aggregate_verification property."""
+
+    def test_averages_across_variants(self, tmp_pvv_run_dir: Path) -> None:
+        data = load_diagram_data(tmp_pvv_run_dir / "test-pvv")
+        assert data is not None
+        agg = data.aggregate_verification
+        # label_completeness: (0.9 + 1.0 + 0.7 + 0.8) / 4 = 0.85
+        assert abs(agg["label_completeness"] - 0.85) < 0.001
+        # edge_completeness: (0.8 + 0.9 + 0.6 + 1.0) / 4 = 0.825
+        assert abs(agg["edge_completeness"] - 0.825) < 0.001
+
+    def test_collects_all_missing_labels(self, tmp_pvv_run_dir: Path) -> None:
+        data = load_diagram_data(tmp_pvv_run_dir / "test-pvv")
+        assert data is not None
+        agg = data.aggregate_verification
+        # NodeA + [] + [NodeB, NodeC] + [NodeD] = 4 total
+        assert len(agg["missing_labels"]) == 4
+        assert "NodeA" in agg["missing_labels"]
+        assert "NodeC" in agg["missing_labels"]
+
+    def test_collects_all_duplicates(self, tmp_pvv_run_dir: Path) -> None:
+        data = load_diagram_data(tmp_pvv_run_dir / "test-pvv")
+        assert data is not None
+        agg = data.aggregate_verification
+        # Dup1 + [] + [Dup2, Dup3] + [] = 3 total
+        assert len(agg["duplicates"]) == 3
+        assert "Dup1" in agg["duplicates"]
+        assert "Dup3" in agg["duplicates"]
+
+    def test_falls_back_to_top_level_for_old_format(self, tmp_run_dir: Path) -> None:
+        data = load_diagram_data(tmp_run_dir / "test-diagram")
+        assert data is not None
+        agg = data.aggregate_verification
+        # Should fall back to the old top-level verification dict
+        assert agg["label_completeness"] == 0.9
+        assert agg["edge_completeness"] == 0.75
+        assert agg["missing_labels"] == ["NodeX"]
+
+    def test_collects_all_missing_edges(self, tmp_pvv_run_dir: Path) -> None:
+        data = load_diagram_data(tmp_pvv_run_dir / "test-pvv")
+        assert data is not None
+        agg = data.aggregate_verification
+        # [X -> Y] + [P -> Q] + [A -> B, C -> D] + [] = 4 total
+        assert len(agg["missing_edges"]) == 4
+
+
+class TestDetailHtmlActualStyle:
+    """Tests for actual_style display in detail view."""
+
+    def test_detail_html_shows_actual_style_in_heatmap(
+        self, tmp_pvv_run_dir: Path
+    ) -> None:
+        data = load_diagram_data(tmp_pvv_run_dir / "test-pvv")
+        assert data is not None
+        html = generate_detail_html(data)
+        assert "Actual Style" in html
+        assert "Dark Mode Tech" in html
+        assert "Clean Minimalist" in html
+        assert "Blueprint / Schematic" in html
+        assert "Cyberpunk / Neon" in html
+
+    def test_detail_html_defaults_to_variant_title(self, tmp_run_dir: Path) -> None:
+        """Old format without actual_style falls back to variant.title()."""
+        data = load_diagram_data(tmp_run_dir / "test-diagram")
+        assert data is not None
+        html = generate_detail_html(data)
+        assert "Actual Style" in html
+        assert "Darkmode" in html
+        assert "Minimal" in html
+
+    def test_detail_per_variant_verification_section(
+        self, tmp_pvv_run_dir: Path
+    ) -> None:
+        """Detail view shows per-variant verification with actual style names."""
+        data = load_diagram_data(tmp_pvv_run_dir / "test-pvv")
+        assert data is not None
+        html = generate_detail_html(data)
+        # Should show per-variant headers with actual style
+        assert "Dark Mode Tech" in html
+        assert "Blueprint / Schematic" in html
+        # Should show per-variant missing labels
+        assert "NodeA" in html
+        assert "NodeB" in html
+        assert "NodeD" in html
+        # Should show duplicates
+        assert "Dup1" in html
+        assert "Dup2" in html
+
+    def test_detail_old_format_fallback_topology(self, tmp_run_dir: Path) -> None:
+        """Old format falls back to single topology-diff block."""
+        data = load_diagram_data(tmp_run_dir / "test-diagram")
+        assert data is not None
+        html = generate_detail_html(data)
+        assert "NodeX" in html
+        assert "A -&gt; B" in html or "A -> B" in html
+
+
+class TestDashboardPerVariantPerformance:
+    """Tests for the per-variant performance section in the dashboard."""
+
+    def test_dashboard_has_variant_performance_section(
+        self, tmp_pvv_run_dir: Path
+    ) -> None:
+        run = load_run_data(tmp_pvv_run_dir)
+        html = generate_dashboard_html(run)
+        assert "Per-Variant Performance" in html or "variant-performance" in html
+
+    def test_dashboard_shows_variant_names(self, tmp_pvv_run_dir: Path) -> None:
+        run = load_run_data(tmp_pvv_run_dir)
+        html = generate_dashboard_html(run)
+        for variant in VARIANT_NAMES:
+            assert variant.title() in html
+
+    def test_dashboard_aggregate_verification_used(self, tmp_pvv_run_dir: Path) -> None:
+        """Dashboard uses aggregate_verification for overall stats."""
+        run = load_run_data(tmp_pvv_run_dir)
+        html = generate_dashboard_html(run)
+        # avg label completeness = 85%
+        assert "85%" in html or "85" in html
+
+
+class TestGridHtmlWithNewFormat:
+    """Tests for grid view with per-variant verification format."""
+
+    def test_grid_uses_aggregate_verification(self, tmp_pvv_run_dir: Path) -> None:
+        run = load_run_data(tmp_pvv_run_dir)
+        html = generate_grid_html(run)
+        # label avg = 85%, edge avg = 82%
+        assert "85" in html
+        assert "82" in html

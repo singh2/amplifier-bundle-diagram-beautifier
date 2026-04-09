@@ -75,6 +75,50 @@ class DiagramData:
                 scores.append(mean(variant_vals))
         return round(mean(scores), 2) if scores else 0.0
 
+    @property
+    def per_variant_verification(self) -> dict[str, dict]:
+        """Get verification data per variant, handling both old and new formats."""
+        result = {}
+        for vname, vdata in self.variants.items():
+            if isinstance(vdata, dict) and "verification" in vdata:
+                result[vname] = vdata["verification"]
+        return result
+
+    @property
+    def aggregate_verification(self) -> dict:
+        """Aggregate verification across variants, falling back to top-level."""
+        pvv = self.per_variant_verification
+        if pvv:
+            label_comps = [
+                v.get("label_completeness", 0)
+                for v in pvv.values()
+                if "label_completeness" in v
+            ]
+            edge_comps = [
+                v.get("edge_completeness", 0)
+                for v in pvv.values()
+                if "edge_completeness" in v
+            ]
+            all_missing_labels: list[str] = []
+            all_missing_edges: list[str] = []
+            all_duplicates: list[str] = []
+            for v in pvv.values():
+                all_missing_labels.extend(v.get("missing_labels", []))
+                all_missing_edges.extend(v.get("missing_edges", []))
+                all_duplicates.extend(v.get("duplicates", []))
+            return {
+                "label_completeness": sum(label_comps) / len(label_comps)
+                if label_comps
+                else 0,
+                "edge_completeness": sum(edge_comps) / len(edge_comps)
+                if edge_comps
+                else 0,
+                "missing_labels": all_missing_labels,
+                "missing_edges": all_missing_edges,
+                "duplicates": all_duplicates,
+            }
+        return self.verification
+
 
 @dataclass
 class RunData:
@@ -263,8 +307,9 @@ def generate_grid_html(run: RunData) -> str:
         avg = diagram.average_score
         color = score_color(avg)
         complexity = diagram.node_count + diagram.edge_count
-        label_pct = _pct(diagram.verification.get("label_completeness", 0.0))
-        edge_pct = _pct(diagram.verification.get("edge_completeness", 0.0))
+        agg_ver = diagram.aggregate_verification
+        label_pct = _pct(agg_ver.get("label_completeness", 0.0))
+        edge_pct = _pct(agg_ver.get("edge_completeness", 0.0))
 
         parts.append(
             f'<div class="card"'
@@ -379,6 +424,15 @@ def generate_detail_html(diagram: DiagramData) -> str:
         parts.append(f"<th>{variant.title()}</th>")
     parts.append("</tr>")
 
+    # Actual Style row
+    parts.append("<tr><th>Actual Style</th>")
+    for variant in VARIANT_NAMES:
+        actual_style = diagram.variants.get(variant, {}).get(
+            "actual_style", variant.title()
+        )
+        parts.append(f"<td>{escape(str(actual_style))}</td>")
+    parts.append("</tr>")
+
     # Dimension rows
     for dim in ALL_DIMENSIONS:
         display = _dimension_display_name(dim)
@@ -394,30 +448,67 @@ def generate_detail_html(diagram: DiagramData) -> str:
 
     parts.append("</table>")
 
-    # --- Section C: Topology diff ---
-    verification = diagram.verification
-    label_pct = _pct(verification.get("label_completeness", 0.0))
-    edge_pct = _pct(verification.get("edge_completeness", 0.0))
+    # --- Section C: Topology diff (per-variant verification) ---
+    pvv = diagram.per_variant_verification
+    agg_ver = diagram.aggregate_verification
+    agg_label_pct = _pct(agg_ver.get("label_completeness", 0.0))
+    agg_edge_pct = _pct(agg_ver.get("edge_completeness", 0.0))
 
     parts.append('<div class="topology-diff">')
-    parts.append(f"<p>Label completeness: {label_pct}%</p>")
-    parts.append(f"<p>Edge completeness: {edge_pct}%</p>")
+    parts.append(
+        f"<p><strong>Overall</strong> &mdash; "
+        f"Label completeness: {agg_label_pct}% | "
+        f"Edge completeness: {agg_edge_pct}%</p>"
+    )
 
-    # Missing labels
-    missing_labels = verification.get("missing_labels", [])
-    if missing_labels:
-        parts.append("<h4>Missing labels</h4><ul>")
-        for label in missing_labels:
-            parts.append(f"<li>{escape(str(label))}</li>")
-        parts.append("</ul>")
-
-    # Missing edges
-    missing_edges = verification.get("missing_edges", [])
-    if missing_edges:
-        parts.append("<h4>Missing edges</h4><ul>")
-        for edge in missing_edges:
-            parts.append(f"<li>{escape(str(edge))}</li>")
-        parts.append("</ul>")
+    if pvv:
+        # Per-variant verification details
+        for vname in VARIANT_NAMES:
+            ver = pvv.get(vname)
+            if ver is None:
+                continue
+            actual_style = diagram.variants.get(vname, {}).get(
+                "actual_style", vname.title()
+            )
+            v_label_pct = _pct(ver.get("label_completeness", 0.0))
+            v_edge_pct = _pct(ver.get("edge_completeness", 0.0))
+            parts.append(
+                f"<h4>{escape(vname.title())} ({escape(str(actual_style))})</h4>"
+            )
+            parts.append(f"<p>Labels: {v_label_pct}% | Edges: {v_edge_pct}%</p>")
+            missing_labels = ver.get("missing_labels", [])
+            if missing_labels:
+                parts.append("<p>Missing labels:</p><ul>")
+                for label in missing_labels:
+                    parts.append(f"<li>{escape(str(label))}</li>")
+                parts.append("</ul>")
+            missing_edges = ver.get("missing_edges", [])
+            if missing_edges:
+                parts.append("<p>Missing edges:</p><ul>")
+                for edge in missing_edges:
+                    parts.append(f"<li>{escape(str(edge))}</li>")
+                parts.append("</ul>")
+            duplicates = ver.get("duplicates", [])
+            if duplicates:
+                parts.append("<p>Duplicates:</p><ul>")
+                for dup in duplicates:
+                    parts.append(f"<li>{escape(str(dup))}</li>")
+                parts.append("</ul>")
+    else:
+        # Fallback: old top-level verification format
+        verification = diagram.verification
+        missing_labels = verification.get("missing_labels", [])
+        if missing_labels:
+            parts.append("<h4>Missing labels</h4><ul>")
+            for label in missing_labels:
+                parts.append(f"<li>{escape(str(label))}</li>")
+            parts.append("</ul>")
+        missing_edges = verification.get("missing_edges", [])
+        if missing_edges:
+            parts.append("<h4>Missing edges</h4><ul>")
+            for edge in missing_edges:
+                parts.append(f"<li>{escape(str(edge))}</li>")
+            parts.append("</ul>")
 
     parts.append("</div>")  # close topology-diff
 
@@ -463,9 +554,13 @@ def generate_dashboard_html(run: RunData) -> str:
         if scores:
             dim_averages[dim] = round(mean(scores), 2)
 
-    # Verification averages
-    label_comps = [d.verification.get("label_completeness", 0.0) for d in diagrams]
-    edge_comps = [d.verification.get("edge_completeness", 0.0) for d in diagrams]
+    # Verification averages (using aggregate_verification for new format support)
+    label_comps = [
+        d.aggregate_verification.get("label_completeness", 0.0) for d in diagrams
+    ]
+    edge_comps = [
+        d.aggregate_verification.get("edge_completeness", 0.0) for d in diagrams
+    ]
     avg_label_comp = round(mean(label_comps), 2) if label_comps else 0.0
     avg_edge_comp = round(mean(edge_comps), 2) if edge_comps else 0.0
 
@@ -530,6 +625,69 @@ def generate_dashboard_html(run: RunData) -> str:
             f'<p class="weakest-note">Weakest dimension: '
             f"<strong>{escape(display)}</strong> ({weakest_val})</p>"
         )
+
+    # --- Per-Variant Performance section ---
+    parts.append('<div class="variant-performance">')
+    parts.append("<h3>Per-Variant Performance</h3>")
+    parts.append('<table class="heatmap">')
+    parts.append("<tr><th>Dimension</th>")
+    for variant in VARIANT_NAMES:
+        parts.append(f"<th>{variant.title()}</th>")
+    parts.append("</tr>")
+
+    # Collect per-variant dimension averages
+    variant_dim_avgs: dict[str, dict[str, float]] = {}
+    for variant in VARIANT_NAMES:
+        dim_vals: dict[str, list[float]] = {dim: [] for dim in ALL_DIMENSIONS}
+        for d in diagrams:
+            vdata = d.variants.get(variant, {})
+            for dim in ALL_DIMENSIONS:
+                val = vdata.get(dim)
+                if val is not None and isinstance(val, (int, float)):
+                    dim_vals[dim].append(float(val))
+        variant_dim_avgs[variant] = {
+            dim: round(mean(vals), 2) if vals else 0.0 for dim, vals in dim_vals.items()
+        }
+
+    for dim in ALL_DIMENSIONS:
+        display = _dimension_display_name(dim)
+        parts.append(f"<tr><th>{display}</th>")
+        for variant in VARIANT_NAMES:
+            avg_val = variant_dim_avgs[variant].get(dim, 0.0)
+            color = score_color(avg_val) if avg_val > 0 else ""
+            parts.append(f'<td class="score {color}">{avg_val}</td>')
+        parts.append("</tr>")
+
+    # Verification row per variant
+    parts.append("<tr><th>Avg Label Completeness</th>")
+    for variant in VARIANT_NAMES:
+        v_label_comps: list[float] = []
+        for d in diagrams:
+            pvv = d.per_variant_verification
+            if variant in pvv and "label_completeness" in pvv[variant]:
+                v_label_comps.append(pvv[variant]["label_completeness"])
+            elif not pvv:
+                # Fallback: old format, use top-level
+                v_label_comps.append(d.verification.get("label_completeness", 0.0))
+        v_avg = round(mean(v_label_comps), 2) if v_label_comps else 0.0
+        parts.append(f"<td>{_pct(v_avg)}%</td>")
+    parts.append("</tr>")
+
+    parts.append("<tr><th>Avg Edge Completeness</th>")
+    for variant in VARIANT_NAMES:
+        v_edge_comps: list[float] = []
+        for d in diagrams:
+            pvv = d.per_variant_verification
+            if variant in pvv and "edge_completeness" in pvv[variant]:
+                v_edge_comps.append(pvv[variant]["edge_completeness"])
+            elif not pvv:
+                v_edge_comps.append(d.verification.get("edge_completeness", 0.0))
+        v_avg = round(mean(v_edge_comps), 2) if v_edge_comps else 0.0
+        parts.append(f"<td>{_pct(v_avg)}%</td>")
+    parts.append("</tr>")
+
+    parts.append("</table>")
+    parts.append("</div>")  # close variant-performance
 
     # --- Complexity band table ---
     band_data: dict[str, list[DiagramData]] = {}

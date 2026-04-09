@@ -121,39 +121,70 @@ steps:
             "format": "{{diagram.fmt}}",
             "node_count": <from topology manifest>,
             "edge_count": <from topology manifest>,
+            "style_override": <true if 25+ nodes triggered style substitution, false otherwise>,
             "variants": {
               "darkmode": {
+                "actual_style": "Dark Mode Tech",
                 "content_accuracy": <1-5>, "layout_quality": <1-5>,
                 "visual_clarity": <1-5>, "prompt_fidelity": <1-5>,
                 "aesthetic_fidelity": <1-5>, "label_fidelity": <1-5>,
-                "structural_accuracy": <1-5>, "color_category_fidelity": <1-5>
+                "structural_accuracy": <1-5>, "color_category_fidelity": <1-5>,
+                "verification": {
+                  "label_completeness": <0.0-1.0>,
+                  "edge_completeness": <0.0-1.0>,
+                  "missing_labels": [<list>],
+                  "missing_edges": [<list>],
+                  "duplicates": [<list of labels appearing more than once>]
+                }
               },
               "minimal": {
+                "actual_style": "Clean Minimalist",
                 "content_accuracy": <1-5>, "layout_quality": <1-5>,
                 "visual_clarity": <1-5>, "prompt_fidelity": <1-5>,
                 "aesthetic_fidelity": <1-5>, "label_fidelity": <1-5>,
-                "structural_accuracy": <1-5>, "color_category_fidelity": <1-5>
+                "structural_accuracy": <1-5>, "color_category_fidelity": <1-5>,
+                "verification": {
+                  "label_completeness": <0.0-1.0>,
+                  "edge_completeness": <0.0-1.0>,
+                  "missing_labels": [<list>],
+                  "missing_edges": [<list>],
+                  "duplicates": [<list>]
+                }
               },
               "sketchnote": {
+                "actual_style": <"Hand-Drawn Sketchnote" or "Blueprint / Schematic" if style_override>,
                 "content_accuracy": <1-5>, "layout_quality": <1-5>,
                 "visual_clarity": <1-5>, "prompt_fidelity": <1-5>,
                 "aesthetic_fidelity": <1-5>, "label_fidelity": <1-5>,
-                "structural_accuracy": <1-5>, "color_category_fidelity": <1-5>
+                "structural_accuracy": <1-5>, "color_category_fidelity": <1-5>,
+                "verification": {
+                  "label_completeness": <0.0-1.0>,
+                  "edge_completeness": <0.0-1.0>,
+                  "missing_labels": [<list>],
+                  "missing_edges": [<list>],
+                  "duplicates": [<list>]
+                }
               },
               "claymation": {
+                "actual_style": <"Claymation Studio" or "Cyberpunk / Neon" if style_override>,
                 "content_accuracy": <1-5>, "layout_quality": <1-5>,
                 "visual_clarity": <1-5>, "prompt_fidelity": <1-5>,
                 "aesthetic_fidelity": <1-5>, "label_fidelity": <1-5>,
-                "structural_accuracy": <1-5>, "color_category_fidelity": <1-5>
+                "structural_accuracy": <1-5>, "color_category_fidelity": <1-5>,
+                "verification": {
+                  "label_completeness": <0.0-1.0>,
+                  "edge_completeness": <0.0-1.0>,
+                  "missing_labels": [<list>],
+                  "missing_edges": [<list>],
+                  "duplicates": [<list>]
+                }
               }
-            },
-            "verification": {
-              "label_completeness": <0.0-1.0 from verify.compare_labels>,
-              "edge_completeness": <0.0-1.0 from verify.compare_edges>,
-              "missing_labels": [<list>],
-              "missing_edges": [<list>]
             }
           }
+
+          Run programmatic verification (Step 6e) separately for EACH variant's
+          generated image. Each variant gets its own label_completeness,
+          edge_completeness, missing_labels, missing_edges, and duplicates.
 
           Also save the source rendering (from Step 2) as:
           {{run_dir}}/{{diagram.name}}/{{diagram.name}}_source.png
@@ -190,7 +221,6 @@ steps:
       quality_data = []
       missing_quality = []
 
-      # Collect per-diagram quality data
       for name in sorted(os.listdir(run_dir)):
           diagram_dir = os.path.join(run_dir, name)
           if not os.path.isdir(diagram_dir):
@@ -202,7 +232,6 @@ steps:
           else:
               missing_quality.append(name)
 
-      # Write aggregate report
       report = {
           'run_dir': run_dir,
           'total_diagrams': len(quality_data) + len(missing_quality),
@@ -211,48 +240,87 @@ steps:
           'diagrams': quality_data,
       }
 
-      # Compute aggregate scores if we have data
       if quality_data:
           dimensions = [
               'content_accuracy', 'layout_quality', 'visual_clarity',
               'prompt_fidelity', 'aesthetic_fidelity', 'label_fidelity',
               'structural_accuracy', 'color_category_fidelity',
           ]
+          variant_keys = ['darkmode', 'minimal', 'sketchnote', 'claymation']
+
+          # Per-dimension aggregation (all variants pooled)
           dim_scores = {dim: [] for dim in dimensions}
-          all_label_completeness = []
-          all_edge_completeness = []
           for d in quality_data:
               for v in d.get('variants', {}).values():
                   for dim in dimensions:
-                      if dim in v:
+                      if dim in v and isinstance(v[dim], (int, float)):
                           dim_scores[dim].append(v[dim])
-              ver = d.get('verification', {})
-              if 'label_completeness' in ver:
-                  all_label_completeness.append(ver['label_completeness'])
-              if 'edge_completeness' in ver:
-                  all_edge_completeness.append(ver['edge_completeness'])
 
           agg = {}
           for dim in dimensions:
               scores = dim_scores[dim]
               agg['avg_' + dim] = round(sum(scores) / len(scores), 2) if scores else None
               agg['min_' + dim] = min(scores) if scores else None
-          agg['avg_label_completeness'] = round(sum(all_label_completeness) / len(all_label_completeness), 3) if all_label_completeness else None
-          agg['avg_edge_completeness'] = round(sum(all_edge_completeness) / len(all_edge_completeness), 3) if all_edge_completeness else None
+
+          # Per-variant aggregation
+          variant_agg = {}
+          for vk in variant_keys:
+              v_scores = {dim: [] for dim in dimensions}
+              v_label_comp = []
+              v_edge_comp = []
+              v_dup_count = 0
+              actual_styles = set()
+              for d in quality_data:
+                  v = d.get('variants', {}).get(vk, {})
+                  for dim in dimensions:
+                      if dim in v and isinstance(v[dim], (int, float)):
+                          v_scores[dim].append(v[dim])
+                  if 'actual_style' in v:
+                      actual_styles.add(v['actual_style'])
+                  ver = v.get('verification', {})
+                  if 'label_completeness' in ver:
+                      v_label_comp.append(ver['label_completeness'])
+                  if 'edge_completeness' in ver:
+                      v_edge_comp.append(ver['edge_completeness'])
+                  v_dup_count += len(ver.get('duplicates', []))
+
+              entry = {'actual_styles': sorted(actual_styles)}
+              for dim in dimensions:
+                  s = v_scores[dim]
+                  entry['avg_' + dim] = round(sum(s) / len(s), 2) if s else None
+              entry['avg_label_completeness'] = round(sum(v_label_comp) / len(v_label_comp), 3) if v_label_comp else None
+              entry['avg_edge_completeness'] = round(sum(v_edge_comp) / len(v_edge_comp), 3) if v_edge_comp else None
+              entry['total_duplicates'] = v_dup_count
+              variant_agg[vk] = entry
+
+          agg['by_variant'] = variant_agg
+
+          # Overall verification averages
+          all_label_comp = []
+          all_edge_comp = []
+          total_dups = 0
+          for d in quality_data:
+              for v in d.get('variants', {}).values():
+                  ver = v.get('verification', {})
+                  if 'label_completeness' in ver:
+                      all_label_comp.append(ver['label_completeness'])
+                  if 'edge_completeness' in ver:
+                      all_edge_comp.append(ver['edge_completeness'])
+                  total_dups += len(ver.get('duplicates', []))
+          agg['avg_label_completeness'] = round(sum(all_label_comp) / len(all_label_comp), 3) if all_label_comp else None
+          agg['avg_edge_completeness'] = round(sum(all_edge_comp) / len(all_edge_comp), 3) if all_edge_comp else None
+          agg['total_duplicates'] = total_dups
+
           report['aggregate'] = agg
 
           # Complexity band analysis
           bands = {'small (<=10)': [], 'medium (11-25)': [], 'large (26-40)': [], 'very_large (41+)': []}
           for d in quality_data:
               nc = d.get('node_count', 0)
-              if nc <= 10:
-                  bands['small (<=10)'].append(d)
-              elif nc <= 25:
-                  bands['medium (11-25)'].append(d)
-              elif nc <= 40:
-                  bands['large (26-40)'].append(d)
-              else:
-                  bands['very_large (41+)'].append(d)
+              if nc <= 10: bands['small (<=10)'].append(d)
+              elif nc <= 25: bands['medium (11-25)'].append(d)
+              elif nc <= 40: bands['large (26-40)'].append(d)
+              else: bands['very_large (41+)'].append(d)
 
           band_summary = {}
           for band_name, diagrams in bands.items():
@@ -260,17 +328,26 @@ steps:
                   band_summary[band_name] = {'count': 0}
                   continue
               band_dim_scores = {dim: [] for dim in dimensions}
+              band_label_comp = []
+              band_edge_comp = []
               for d in diagrams:
                   for v in d.get('variants', {}).values():
                       for dim in dimensions:
-                          if dim in v:
+                          if dim in v and isinstance(v[dim], (int, float)):
                               band_dim_scores[dim].append(v[dim])
-              band_entry = {'count': len(diagrams)}
+                      ver = v.get('verification', {})
+                      if 'label_completeness' in ver:
+                          band_label_comp.append(ver['label_completeness'])
+                      if 'edge_completeness' in ver:
+                          band_edge_comp.append(ver['edge_completeness'])
+              entry = {'count': len(diagrams)}
               for dim in dimensions:
-                  scores = band_dim_scores[dim]
-                  band_entry['avg_' + dim] = round(sum(scores) / len(scores), 2) if scores else None
-                  band_entry['min_' + dim] = min(scores) if scores else None
-              band_summary[band_name] = band_entry
+                  s = band_dim_scores[dim]
+                  entry['avg_' + dim] = round(sum(s) / len(s), 2) if s else None
+                  entry['min_' + dim] = min(s) if s else None
+              entry['avg_label_completeness'] = round(sum(band_label_comp) / len(band_label_comp), 3) if band_label_comp else None
+              entry['avg_edge_completeness'] = round(sum(band_edge_comp) / len(band_edge_comp), 3) if band_edge_comp else None
+              band_summary[band_name] = entry
           report['complexity_bands'] = band_summary
 
       report_path = os.path.join(run_dir, 'quality-report.json')
