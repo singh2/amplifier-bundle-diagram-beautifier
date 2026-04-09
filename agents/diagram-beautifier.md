@@ -179,6 +179,20 @@ double duty as both the routing decision AND the Step 1 ground truth extraction.
    Record the chosen sub-mode as `_claymation_mode` ("diorama" or "normal") and
    include a one-sentence rationale. Proceed immediately to Step 4.
 
+   **Complexity-based style substitution:**
+
+   When the topology manifest has **25 or more nodes**, replace the Cinematic
+   variants with information-dense alternatives:
+
+   - **Variant C** becomes **Blueprint / Schematic** (instead of Hand-Drawn Sketchnote)
+   - **Variant D** becomes **Cyberpunk / Neon** (instead of Claymation Studio)
+
+   Record the substitution as `_style_override: true` and note which styles are
+   active. Variants A (Dark Mode Tech) and B (Clean Minimalist) are never changed.
+
+   When `_style_override` is false (< 25 nodes), Variants C and D remain
+   Hand-Drawn Sketchnote and Claymation Studio as before.
+
 4. **Panel decomposition**: Based on node count and subgraph structure, decide
    single vs. multi-panel layout:
    - 1-10 nodes: single panel
@@ -265,8 +279,11 @@ double duty as both the routing decision AND the Step 1 ground truth extraction.
 
    ### 5c. Hand-Drawn Sketchnote (Cinematic approach)
 
-   No `reference_image_path` ever — generates from topology manifest and prompt
-   imagination alone. Never pass any reference image regardless of input type.
+   **Reference image (spatial anchor):**
+   Pass the source PNG (or rendered PNG for .dot/.mmd input) as
+   `reference_image_path` with: "Use this image ONLY as a spatial layout
+   reference for node positioning and grouping. Do not replicate its visual
+   style, colors, or typography. Draw this fresh in Hand-Drawn Sketchnote style."
 
    **Prompt construction:**
 
@@ -297,10 +314,46 @@ double duty as both the routing decision AND the Step 1 ground truth extraction.
 
    ---
 
+   ### 5c-alt. Blueprint / Schematic (Cinematic approach, 25+ nodes)
+
+   Active when `_style_override` is true. Replaces Hand-Drawn Sketchnote.
+
+   **Reference image (spatial anchor):**
+   Pass the source PNG (or rendered PNG for .dot/.mmd input) as
+   `reference_image_path` with: "Use this image ONLY as a spatial layout
+   reference for node positioning and grouping. Do not replicate its visual
+   style, colors, or typography. Draw this fresh in Blueprint / Schematic style."
+
+   **Prompt construction:**
+
+   1. **Quality bar**: "This should be a striking technical blueprint — the
+      diagram reimagined as a precision engineering schematic."
+   2. **Hero element as focal point**: hero candidate gets a detail callout
+      or enlarged inset with leader lines.
+   3. **Aesthetic properties**: Prussian blue background with subtle grid lines,
+      white linework only (no color fills), stencil/monospace labels, fine
+      outlined nodes with dashed borders, straight connectors with 90-degree
+      turns and small open-triangle arrowheads. Measurement markers and
+      dimension callouts where space allows.
+   4. **Connector vocabulary**: Fine white lines, straight segments, 90-degree
+      turns. Open triangle arrowheads. Leader lines for annotations.
+   5. **Color-category mapping** (if applicable): differentiate categories by
+      line weight or dash pattern rather than fill color.
+   6. **Structural preservation** (last): same as other variants.
+
+   **Multi-panel:** Same as 5c.
+
+   ---
+
    ### 5d. Claymation Studio (Cinematic approach)
 
-   No `reference_image_path` ever. Uses `_claymation_mode` ("diorama" or
-   "normal") decided in Step 3.
+   **Reference image (spatial anchor):**
+   Pass the source PNG (or rendered PNG for .dot/.mmd input) as
+   `reference_image_path` with: "Use this image ONLY as a spatial layout
+   reference for node positioning and grouping. Do not replicate its visual
+   style, colors, or typography. Draw this fresh in Claymation Studio style."
+
+   Uses `_claymation_mode` ("diorama" or "normal") decided in Step 3.
 
    **Prompt construction:**
 
@@ -344,6 +397,37 @@ double duty as both the routing decision AND the Step 1 ground truth extraction.
    reference for any panel). Analyze Panel 1 for style reconciliation. Panels
    2-N reference Panel 1 for visual consistency.
 
+   ---
+
+   ### 5d-alt. Cyberpunk / Neon (Cinematic approach, 25+ nodes)
+
+   Active when `_style_override` is true. Replaces Claymation Studio.
+
+   **Reference image (spatial anchor):**
+   Pass the source PNG (or rendered PNG for .dot/.mmd input) as
+   `reference_image_path` with: "Use this image ONLY as a spatial layout
+   reference for node positioning and grouping. Do not replicate its visual
+   style, colors, or typography. Draw this fresh in Cyberpunk / Neon style."
+
+   **Prompt construction:**
+
+   1. **Quality bar**: "This should be a striking cyberpunk HUD — the diagram
+      reimagined as a high-tech data visualization."
+   2. **Hero element as focal point**: hero candidate pulses brighter with a
+      targeting reticle or HUD overlay bracket. Data readout annotations on
+      high-connectivity nodes.
+   3. **Aesthetic properties**: near-black background (#0A0A1A), CRT scan line
+      overlay, neon-outlined nodes with subtle glow (4px radius rects, hexagons
+      for agents/services), monospace typography, thin neon connector paths with
+      source-to-destination color gradient.
+   4. **Connector vocabulary**: Thin neon-glow curved paths with sharp neon
+      arrowheads. Subtle pulse/flow animation feel via gradient.
+   5. **Color-category mapping** (if applicable): use distinct neon colors per
+      category (cyan, magenta, amber, green).
+   6. **Structural preservation** (last): same as other variants.
+
+   **Multi-panel:** Same as 5d.
+
 6. **Quality review**: Analyze each panel for all four variants using `nano-banana
    analyze` across 8 dimensions, rating each dimension 1-5. All variants share the
    same review criteria; the difference is the ground truth source.
@@ -381,9 +465,8 @@ double duty as both the routing decision AND the Step 1 ground truth extraction.
 
    ### 6c. Hand-Drawn Sketchnote and 6d. Claymation
 
-   **Ground truth**: the topology manifest is the sole ground truth — no reference
-   image fallback regardless of input type. Rate label fidelity and structural
-   accuracy 1-5 using the scoring rubric.
+   **Ground truth**: topology manifest + source PNG as spatial reference. Rate
+   label fidelity and structural accuracy 1-5 using the scoring rubric.
 
    **Missing nodes refinement**: if any nodes from the topology manifest are absent
    (structural accuracy score < 3), re-prompt with: "The following nodes from the

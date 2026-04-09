@@ -355,11 +355,12 @@ def test_step6_has_cinematic_review_subsection() -> None:
 
 
 def test_step6_cinematic_names_manifest_as_ground_truth() -> None:
-    """Step 6b Cinematic review must name topology manifest as 'sole ground truth'."""
+    """Step 6c/6d review must name topology manifest + spatial reference as ground truth."""
     content = _read_agent()
     block = _get_step_6_block(content)
-    assert "sole ground truth" in block.lower(), (
-        "Step 6b Cinematic review must name topology manifest as 'sole ground truth'.\n"
+    lower = block.lower()
+    assert "topology manifest" in lower and "spatial reference" in lower, (
+        "Step 6c/6d review must name topology manifest + source PNG as spatial reference.\n"
         f"Actual step 6 block:\n{block}"
     )
 
@@ -460,3 +461,43 @@ def test_step8_offers_refinement_options() -> None:
         "Step 8 must offer refinement options (e.g. 'pick one for refinement').\n"
         f"Actual step 8 block:\n{block}"
     )
+
+
+class TestComplexityBasedStyles:
+    """Tests for Blueprint/Schematic and Cyberpunk/Neon style additions."""
+
+    def test_agent_contains_blueprint_schematic(self) -> None:
+        """Agent file must contain Blueprint / Schematic text."""
+        content = _read_agent()
+        assert "Blueprint / Schematic" in content, (
+            "Agent file must contain 'Blueprint / Schematic' style reference."
+        )
+
+    def test_agent_contains_cyberpunk_neon(self) -> None:
+        """Agent file must contain Cyberpunk / Neon text."""
+        content = _read_agent()
+        assert "Cyberpunk / Neon" in content, (
+            "Agent file must contain 'Cyberpunk / Neon' style reference."
+        )
+
+    def test_agent_contains_complexity_threshold(self) -> None:
+        """Agent file must mention 25+ node complexity threshold."""
+        content = _read_agent()
+        assert "25 or more nodes" in content or "25+" in content, (
+            "Agent file must mention complexity threshold of 25+ nodes."
+        )
+
+    def test_agent_contains_spatial_anchor_reference(self) -> None:
+        """Agent file must contain spatial anchor or spatial layout reference."""
+        content = _read_agent()
+        lower = content.lower()
+        assert "spatial anchor" in lower or "spatial layout reference" in lower, (
+            "Agent file must contain 'spatial anchor' or 'spatial layout reference'."
+        )
+
+    def test_agent_contains_style_override_flag(self) -> None:
+        """Agent file must contain _style_override flag."""
+        content = _read_agent()
+        assert "_style_override" in content, (
+            "Agent file must contain '_style_override' flag for complexity-based substitution."
+        )
