@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
+from html import escape
 from pathlib import Path
 from statistics import mean
 
@@ -133,3 +134,100 @@ def load_run_data(run_dir: Path) -> RunData:
         if diagram is not None:
             diagrams.append(diagram)
     return RunData(run_dir=run_dir, diagrams=diagrams)
+
+
+# ---------------------------------------------------------------------------
+# HTML helpers
+# ---------------------------------------------------------------------------
+
+
+def score_color(score: float) -> str:
+    """Return a color name based on the quality score threshold."""
+    if score >= 4.0:
+        return "green"
+    if score >= 3.0:
+        return "yellow"
+    return "red"
+
+
+def _pct(value: float) -> str:
+    """Format a 0.0–1.0 fraction as an integer percentage string."""
+    return f"{int(value * 100)}"
+
+
+# ---------------------------------------------------------------------------
+# Grid view
+# ---------------------------------------------------------------------------
+
+
+def generate_grid_html(run: RunData) -> str:
+    """Generate a card-grid HTML fragment for all diagrams in a run."""
+    parts: list[str] = []
+
+    # Sort/filter controls
+    parts.append('<div class="controls">')
+    parts.append('<select id="sort-by">')
+    parts.append('<option value="score">Sort by Score</option>')
+    parts.append('<option value="name">Sort by Name</option>')
+    parts.append('<option value="complexity">Sort by Complexity</option>')
+    parts.append('<option value="format">Sort by Format</option>')
+    parts.append("</select>")
+    parts.append('<select id="filter-format">')
+    parts.append('<option value="all">All Formats</option>')
+    formats = sorted({d.fmt for d in run.diagrams})
+    for fmt in formats:
+        parts.append(f'<option value="{escape(fmt)}">{escape(fmt)}</option>')
+    parts.append("</select>")
+    parts.append("</div>")
+
+    # Card grid
+    parts.append('<div class="grid">')
+    for diagram in run.diagrams:
+        name = escape(diagram.name)
+        avg = diagram.average_score
+        color = score_color(avg)
+        complexity = diagram.node_count + diagram.edge_count
+        label_pct = _pct(diagram.verification.get("label_completeness", 0.0))
+        edge_pct = _pct(diagram.verification.get("edge_completeness", 0.0))
+
+        parts.append(
+            f'<div class="card"'
+            f' data-name="{name}"'
+            f' data-score="{avg}"'
+            f' data-format="{escape(diagram.fmt)}"'
+            f' data-complexity="{complexity}">'
+        )
+
+        # Thumbnail (darkmode variant)
+        thumb = f"./{name}/{name}_darkmode.png"
+        parts.append(f'<img src="{thumb}" alt="{name} darkmode">')
+
+        # Diagram name
+        parts.append(f"<h3>{name}</h3>")
+
+        # Format badge
+        parts.append(f'<span class="badge">{escape(diagram.fmt)}</span>')
+
+        # Average score, color-coded
+        parts.append(f'<span class="score {color}">{avg}</span>')
+
+        # Verification bars
+        parts.append('<div class="verification">')
+        parts.append(
+            f'<div class="bar" style="width:{label_pct}%">Labels {label_pct}%</div>'
+        )
+        parts.append(
+            f'<div class="bar" style="width:{edge_pct}%">Edges {edge_pct}%</div>'
+        )
+        parts.append("</div>")
+
+        # Complexity indicator
+        parts.append(
+            f'<span class="complexity">'
+            f"{diagram.node_count}n / {diagram.edge_count}e</span>"
+        )
+
+        parts.append("</div>")  # close card
+
+    parts.append("</div>")  # close grid
+    return "\n".join(parts)

@@ -12,8 +12,10 @@ from diagram_beautifier.viewer import (
     VARIANT_NAMES,
     DiagramData,  # noqa: F401
     RunData,  # noqa: F401
+    generate_grid_html,
     load_diagram_data,
     load_run_data,
+    score_color,
 )
 
 QUALITY_2DIM = {
@@ -216,3 +218,58 @@ class TestLoadRunData:
         d.mkdir()
         run = load_run_data(tmp_run_dir)
         assert len(run.diagrams) == 2
+
+
+class TestScoreColor:
+    def test_green_for_4_and_above(self) -> None:
+        assert score_color(4.0) == "green"
+        assert score_color(5.0) == "green"
+
+    def test_yellow_for_3_to_3_9(self) -> None:
+        assert score_color(3.0) == "yellow"
+        assert score_color(3.9) == "yellow"
+
+    def test_red_for_below_3(self) -> None:
+        assert score_color(2.9) == "red"
+        assert score_color(1.0) == "red"
+
+
+class TestGenerateGridHtml:
+    def test_contains_diagram_cards(self, tmp_run_dir: Path) -> None:
+        run = load_run_data(tmp_run_dir)
+        html = generate_grid_html(run)
+        assert "test-diagram" in html
+        assert "test-diagram-8" in html
+
+    def test_contains_format_badges(self, tmp_run_dir: Path) -> None:
+        run = load_run_data(tmp_run_dir)
+        html = generate_grid_html(run)
+        assert "dot" in html
+        assert "mermaid" in html
+
+    def test_contains_score_values(self, tmp_run_dir: Path) -> None:
+        run = load_run_data(tmp_run_dir)
+        html = generate_grid_html(run)
+        assert "4.0" in html
+
+    def test_contains_complexity_indicators(self, tmp_run_dir: Path) -> None:
+        run = load_run_data(tmp_run_dir)
+        html = generate_grid_html(run)
+        assert "5n" in html
+        assert "4e" in html
+
+    def test_contains_verification_data(self, tmp_run_dir: Path) -> None:
+        run = load_run_data(tmp_run_dir)
+        html = generate_grid_html(run)
+        assert "90" in html  # label_completeness 0.9 -> 90%
+        assert "75" in html  # edge_completeness 0.75 -> 75%
+
+    def test_contains_card_css_class(self, tmp_run_dir: Path) -> None:
+        run = load_run_data(tmp_run_dir)
+        html = generate_grid_html(run)
+        assert "card" in html
+
+    def test_contains_image_references(self, tmp_run_dir: Path) -> None:
+        run = load_run_data(tmp_run_dir)
+        html = generate_grid_html(run)
+        assert "test-diagram_darkmode.png" in html
