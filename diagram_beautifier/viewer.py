@@ -822,6 +822,133 @@ def generate_report(run_dir: Path, output_path: Path | None = None) -> Path:
 
 
 # ---------------------------------------------------------------------------
+# Cross-run comparison
+# ---------------------------------------------------------------------------
+
+
+COMPARISON_CSS = ".flagged-delta { background: #2d1b00; }\n"
+
+
+def generate_comparison_report(run_dirs: list[Path], output_path: Path) -> Path:
+    """Generate a cross-run comparison HTML report.
+
+    Correlates diagrams by name across runs, computes score trends,
+    flags diagrams with significant delta (>1 point between first and last),
+    and writes a self-contained comparison.html.
+    """
+    # 1. Load RunData for each run directory
+    runs = [load_run_data(d) for d in run_dirs]
+
+    # 2. Correlate diagrams by name across runs
+    #    Build {diagram_name: {run_index: DiagramData}}
+    diagram_map: dict[str, dict[int, DiagramData]] = {}
+    for i, run in enumerate(runs):
+        for diagram in run.diagrams:
+            diagram_map.setdefault(diagram.name, {})[i] = diagram
+
+    # All diagram names across runs
+    all_names = sorted(diagram_map.keys())
+
+    # 3. Compute score trend per diagram across runs
+    #    {diagram_name: [score_or_None per run]}
+    score_trends: dict[str, list[float | None]] = {}
+    for name in all_names:
+        scores: list[float | None] = []
+        for i in range(len(runs)):
+            d = diagram_map[name].get(i)
+            scores.append(d.average_score if d is not None else None)
+        score_trends[name] = scores
+
+    # 4. Compute aggregate average per run
+    run_averages: list[float] = []
+    for i, run in enumerate(runs):
+        avg_scores = [d.average_score for d in run.diagrams]
+        run_averages.append(round(mean(avg_scores), 2) if avg_scores else 0.0)
+
+    # 5. Flag diagrams with significant delta (>1 point first vs last)
+    flagged: set[str] = set()
+    for name, scores in score_trends.items():
+        actual = [s for s in scores if s is not None]
+        if len(actual) >= 2:
+            delta = abs(actual[-1] - actual[0])
+            if delta > 1:
+                flagged.add(name)
+
+    # 6. Generate HTML
+    run_names = [escape(d.name) for d in run_dirs]
+
+    parts: list[str] = []
+    parts.append("<!DOCTYPE html>")
+    parts.append('<html lang="en">')
+    parts.append("<head>")
+    parts.append('<meta charset="utf-8">')
+    parts.append('<meta name="viewport" content="width=device-width, initial-scale=1">')
+    parts.append("<title>Cross-Run Comparison</title>")
+    parts.append("<style>")
+    parts.append(REPORT_CSS)
+    parts.append(COMPARISON_CSS)
+    parts.append("</style>")
+    parts.append("</head>")
+    parts.append("<body>")
+    parts.append('<div class="container">')
+    parts.append("<h1>Cross-Run Comparison</h1>")
+
+    # --- Aggregate Trend section ---
+    parts.append('<div class="comparison-aggregate">')
+    parts.append("<h2>Aggregate Trend</h2>")
+    parts.append("<table>")
+    parts.append("<tr><th>Run</th><th>Avg Score</th></tr>")
+    for i, name in enumerate(run_names):
+        parts.append(f"<tr><td>{name}</td><td>{run_averages[i]}</td></tr>")
+    parts.append("</table>")
+    parts.append("</div>")
+
+    # --- Per-Diagram Trends section ---
+    parts.append('<div class="comparison-diagrams">')
+    parts.append("<h2>Per-Diagram Trends</h2>")
+    parts.append("<table>")
+
+    # Header: Diagram + run names
+    parts.append("<tr><th>Diagram</th>")
+    for name in run_names:
+        parts.append(f"<th>{name}</th>")
+    parts.append("<th>Delta</th></tr>")
+
+    for diagram_name in all_names:
+        scores = score_trends[diagram_name]
+        is_flagged = diagram_name in flagged
+        row_class = ' class="flagged-delta"' if is_flagged else ""
+        parts.append(f"<tr{row_class}>")
+        parts.append(f"<td>{escape(diagram_name)}</td>")
+        for s in scores:
+            if s is not None:
+                color = score_color(s)
+                parts.append(f'<td class="score {color}">{s}</td>')
+            else:
+                parts.append('<td class="score-na">-</td>')
+        # Delta column
+        actual = [s for s in scores if s is not None]
+        if len(actual) >= 2:
+            delta = round(actual[-1] - actual[0], 2)
+            flag_text = " \u26a0 significant delta" if is_flagged else ""
+            parts.append(f"<td>{delta:+.2f}{flag_text}</td>")
+        else:
+            parts.append("<td>-</td>")
+        parts.append("</tr>")
+
+    parts.append("</table>")
+    parts.append("</div>")
+
+    parts.append("</div><!-- /container -->")
+    parts.append("</body>")
+    parts.append("</html>")
+
+    html = "\n".join(parts)
+    output_path.write_text(html)
+    return output_path
+
+
+# ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
 

@@ -13,6 +13,7 @@ from diagram_beautifier.viewer import (
     VARIANT_NAMES,
     DiagramData,  # noqa: F401
     RunData,  # noqa: F401
+    generate_comparison_report,
     generate_dashboard_html,
     generate_detail_html,
     generate_grid_html,
@@ -488,3 +489,99 @@ class TestIntegration:
         assert "/Users/" not in content
         assert "/home/" not in content
         assert "eval-results/" not in content  # Should not have the full path
+
+
+@pytest.fixture()
+def two_run_dirs(tmp_path: Path) -> tuple[Path, Path]:
+    run_a = tmp_path / "run-a"
+    run_a.mkdir()
+    d1a = run_a / "shared-diagram"
+    d1a.mkdir()
+    q1a = {**QUALITY_2DIM, "diagram": "shared-diagram"}
+    (d1a / "quality.json").write_text(json.dumps(q1a))
+    for v in VARIANT_NAMES:
+        (d1a / f"shared-diagram_{v}.png").write_bytes(b"PNG")
+    d2a = run_a / "only-in-a"
+    d2a.mkdir()
+    q2a = {**QUALITY_2DIM, "diagram": "only-in-a"}
+    (d2a / "quality.json").write_text(json.dumps(q2a))
+
+    run_b = tmp_path / "run-b"
+    run_b.mkdir()
+    d1b = run_b / "shared-diagram"
+    d1b.mkdir()
+    q1b = {
+        "diagram": "shared-diagram",
+        "format": "dot",
+        "node_count": 5,
+        "edge_count": 4,
+        "variants": {
+            "darkmode": {"label_fidelity": 5, "structural_accuracy": 5},
+            "minimal": {"label_fidelity": 5, "structural_accuracy": 5},
+            "sketchnote": {"label_fidelity": 5, "structural_accuracy": 5},
+            "claymation": {"label_fidelity": 5, "structural_accuracy": 5},
+        },
+        "verification": {
+            "label_completeness": 1.0,
+            "edge_completeness": 1.0,
+            "missing_labels": [],
+            "missing_edges": [],
+        },
+    }
+    (d1b / "quality.json").write_text(json.dumps(q1b))
+    for v in VARIANT_NAMES:
+        (d1b / f"shared-diagram_{v}.png").write_bytes(b"PNG")
+    return run_a, run_b
+
+
+class TestGenerateComparisonReport:
+    def test_produces_valid_html(
+        self, two_run_dirs: tuple[Path, Path], tmp_path: Path
+    ) -> None:
+        run_a, run_b = two_run_dirs
+        output = tmp_path / "comparison.html"
+        generate_comparison_report([run_a, run_b], output)
+        assert output.exists()
+        content = output.read_text()
+        assert "<!DOCTYPE html>" in content
+
+    def test_contains_both_run_names(
+        self, two_run_dirs: tuple[Path, Path], tmp_path: Path
+    ) -> None:
+        run_a, run_b = two_run_dirs
+        output = tmp_path / "comparison.html"
+        generate_comparison_report([run_a, run_b], output)
+        content = output.read_text()
+        assert "run-a" in content
+        assert "run-b" in content
+
+    def test_shows_shared_diagrams(
+        self, two_run_dirs: tuple[Path, Path], tmp_path: Path
+    ) -> None:
+        run_a, run_b = two_run_dirs
+        output = tmp_path / "comparison.html"
+        generate_comparison_report([run_a, run_b], output)
+        content = output.read_text()
+        assert "shared-diagram" in content
+
+    def test_flags_significant_delta(
+        self, two_run_dirs: tuple[Path, Path], tmp_path: Path
+    ) -> None:
+        run_a, run_b = two_run_dirs
+        output = tmp_path / "comparison.html"
+        generate_comparison_report([run_a, run_b], output)
+        content = output.read_text()
+        assert (
+            "flagged" in content.lower()
+            or "significant" in content.lower()
+            or "delta" in content.lower()
+        )
+
+    def test_contains_aggregate_trend(
+        self, two_run_dirs: tuple[Path, Path], tmp_path: Path
+    ) -> None:
+        run_a, run_b = two_run_dirs
+        output = tmp_path / "comparison.html"
+        generate_comparison_report([run_a, run_b], output)
+        content = output.read_text()
+        assert "trend" in content.lower() or "aggregate" in content.lower()
