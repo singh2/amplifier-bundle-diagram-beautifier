@@ -12,6 +12,7 @@ from diagram_beautifier.viewer import (
     VARIANT_NAMES,
     DiagramData,  # noqa: F401
     RunData,  # noqa: F401
+    generate_dashboard_html,
     generate_detail_html,
     generate_grid_html,
     load_diagram_data,
@@ -330,3 +331,60 @@ class TestGenerateDetailHtml:
         html = generate_detail_html(d)
         assert "90" in html
         assert "75" in html
+
+
+class TestGenerateDashboardHtml:
+    def test_contains_total_diagrams(self, tmp_run_dir: Path) -> None:
+        run = load_run_data(tmp_run_dir)
+        html = generate_dashboard_html(run)
+        assert ">2<" in html or ">2 " in html
+
+    def test_contains_dimension_averages(self, tmp_run_dir: Path) -> None:
+        run = load_run_data(tmp_run_dir)
+        html = generate_dashboard_html(run)
+        assert "dimension-chart" in html or "bar-chart" in html
+        assert "Label Fidelity" in html or "label_fidelity" in html
+
+    def test_contains_complexity_bands(self, tmp_run_dir: Path) -> None:
+        run = load_run_data(tmp_run_dir)
+        html = generate_dashboard_html(run)
+        assert "small" in html.lower() or "medium" in html.lower()
+
+    def test_contains_worst_performers(self, tmp_run_dir: Path) -> None:
+        run = load_run_data(tmp_run_dir)
+        html = generate_dashboard_html(run)
+        assert "worst" in html.lower() or "bottom" in html.lower()
+        assert "test-diagram" in html
+
+    def test_contains_key_metrics(self, tmp_run_dir: Path) -> None:
+        run = load_run_data(tmp_run_dir)
+        html = generate_dashboard_html(run)
+        assert "metrics" in html.lower() or "key-metric" in html
+
+    def test_handles_run_with_single_diagram(self, tmp_path: Path) -> None:
+        run_dir = tmp_path / "single-run"
+        run_dir.mkdir()
+        d = run_dir / "only-diagram"
+        d.mkdir()
+        quality = {
+            "diagram": "only-diagram",
+            "format": "dot",
+            "node_count": 3,
+            "edge_count": 2,
+            "variants": {
+                "darkmode": {"label_fidelity": 4, "structural_accuracy": 5},
+                "minimal": {"label_fidelity": 3, "structural_accuracy": 4},
+                "sketchnote": {"label_fidelity": 5, "structural_accuracy": 3},
+                "claymation": {"label_fidelity": 4, "structural_accuracy": 4},
+            },
+            "verification": {
+                "label_completeness": 0.9,
+                "edge_completeness": 0.75,
+                "missing_labels": ["NodeX"],
+                "missing_edges": ["A -> B"],
+            },
+        }
+        (d / "quality.json").write_text(json.dumps(quality))
+        run = load_run_data(run_dir)
+        html = generate_dashboard_html(run)
+        assert "only-diagram" in html or "test-diagram" in html

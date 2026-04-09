@@ -336,3 +336,157 @@ def generate_detail_html(diagram: DiagramData) -> str:
     parts.append("</div>")  # close topology-diff
 
     return "\n".join(parts)
+
+
+# ---------------------------------------------------------------------------
+# Dashboard view
+# ---------------------------------------------------------------------------
+
+
+def _complexity_band(node_count: int) -> str:
+    """Classify a diagram by node count into a complexity band."""
+    if node_count <= 10:
+        return "small (≤10)"
+    if node_count <= 25:
+        return "medium (11-25)"
+    if node_count <= 40:
+        return "large (26-40)"
+    return "very_large (41+)"
+
+
+def generate_dashboard_html(run: RunData) -> str:
+    """Generate dashboard tab HTML with aggregate metrics for a run."""
+    parts: list[str] = []
+    diagrams = run.diagrams
+
+    # --- Key metrics row ---
+    total = len(diagrams)
+
+    all_avg_scores = [d.average_score for d in diagrams]
+    overall_avg = round(mean(all_avg_scores), 2) if all_avg_scores else 0.0
+
+    # Collect per-dimension averages across all diagrams and variants
+    dim_averages: dict[str, float] = {}
+    for dim in ALL_DIMENSIONS:
+        scores: list[float] = []
+        for d in diagrams:
+            for variant_scores in d.variants.values():
+                val = variant_scores.get(dim)
+                if val is not None and isinstance(val, (int, float)):
+                    scores.append(float(val))
+        if scores:
+            dim_averages[dim] = round(mean(scores), 2)
+
+    # Verification averages
+    label_comps = [d.verification.get("label_completeness", 0.0) for d in diagrams]
+    edge_comps = [d.verification.get("edge_completeness", 0.0) for d in diagrams]
+    avg_label_comp = round(mean(label_comps), 2) if label_comps else 0.0
+    avg_edge_comp = round(mean(edge_comps), 2) if edge_comps else 0.0
+
+    parts.append('<div class="key-metrics">')
+    parts.append(f"<div><strong>Total Diagrams</strong><span>{total}</span></div>")
+    parts.append(f"<div><strong>Avg Score</strong><span>{overall_avg}</span></div>")
+
+    # Show avg structural_accuracy and label_fidelity if available
+    for key_dim in ("structural_accuracy", "label_fidelity"):
+        if key_dim in dim_averages:
+            display = _dimension_display_name(key_dim)
+            parts.append(
+                f"<div><strong>Avg {display}</strong>"
+                f"<span>{dim_averages[key_dim]}</span></div>"
+            )
+
+    parts.append(
+        f"<div><strong>Avg Label Completeness</strong>"
+        f"<span>{_pct(avg_label_comp)}%</span></div>"
+    )
+    parts.append(
+        f"<div><strong>Avg Edge Completeness</strong>"
+        f"<span>{_pct(avg_edge_comp)}%</span></div>"
+    )
+    parts.append("</div>")  # close key-metrics
+
+    # --- Dimension breakdown bar chart ---
+    parts.append('<div class="dimension-chart bar-chart">')
+    parts.append("<h3>Dimension Averages</h3>")
+
+    # Determine weakest dimension
+    weakest_dim: str | None = None
+    weakest_val: float = 6.0
+    for dim in ALL_DIMENSIONS:
+        if dim in dim_averages and dim_averages[dim] < weakest_val:
+            weakest_val = dim_averages[dim]
+            weakest_dim = dim
+
+    for dim in ALL_DIMENSIONS:
+        if dim not in dim_averages:
+            continue
+        avg_val = dim_averages[dim]
+        color = score_color(avg_val)
+        display = _dimension_display_name(dim)
+        width_pct = int(avg_val / 5.0 * 100)
+        parts.append('<div class="bar-row">')
+        parts.append(f'<span class="bar-label">{escape(display)}</span>')
+        parts.append('<span class="bar-track">')
+        parts.append(
+            f'<span class="bar-fill {color}" style="width:{width_pct}%"></span>'
+        )
+        parts.append("</span>")
+        parts.append(f'<span class="bar-value">{avg_val}</span>')
+        parts.append("</div>")
+
+    parts.append("</div>")  # close dimension-chart
+
+    # --- Weakest dimension note ---
+    if weakest_dim is not None:
+        display = _dimension_display_name(weakest_dim)
+        parts.append(
+            f'<p class="weakest-note">Weakest dimension: '
+            f"<strong>{escape(display)}</strong> ({weakest_val})</p>"
+        )
+
+    # --- Complexity band table ---
+    band_data: dict[str, list[DiagramData]] = {}
+    for d in diagrams:
+        band = _complexity_band(d.node_count)
+        band_data.setdefault(band, []).append(d)
+
+    band_order = [
+        "small (≤10)",
+        "medium (11-25)",
+        "large (26-40)",
+        "very_large (41+)",
+    ]
+
+    parts.append('<table class="complexity-table">')
+    parts.append("<tr><th>Complexity Band</th><th>Count</th><th>Avg Score</th></tr>")
+    for band in band_order:
+        band_diagrams = band_data.get(band, [])
+        if not band_diagrams:
+            continue
+        count = len(band_diagrams)
+        band_avg = round(mean([d.average_score for d in band_diagrams]), 2)
+        parts.append(
+            f"<tr><td>{escape(band)}</td><td>{count}</td><td>{band_avg}</td></tr>"
+        )
+    parts.append("</table>")
+
+    # --- Worst 5 performers ---
+    sorted_diagrams = sorted(diagrams, key=lambda d: d.average_score)
+    worst_5 = sorted_diagrams[:5]
+
+    parts.append('<div class="worst-performers">')
+    parts.append("<h3>Worst 5 Performers</h3>")
+    parts.append("<ol>")
+    for d in worst_5:
+        name = escape(d.name)
+        avg = d.average_score
+        color = score_color(avg)
+        parts.append(
+            f'<li><a href="#{name}">{name}</a> '
+            f'<span class="score {color}">{avg}</span></li>'
+        )
+    parts.append("</ol>")
+    parts.append("</div>")  # close worst-performers
+
+    return "\n".join(parts)
