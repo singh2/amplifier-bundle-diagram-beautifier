@@ -213,30 +213,33 @@ steps:
 
       # Compute aggregate scores if we have data
       if quality_data:
-          all_label_scores = []
-          all_struct_scores = []
+          dimensions = [
+              'content_accuracy', 'layout_quality', 'visual_clarity',
+              'prompt_fidelity', 'aesthetic_fidelity', 'label_fidelity',
+              'structural_accuracy', 'color_category_fidelity',
+          ]
+          dim_scores = {dim: [] for dim in dimensions}
           all_label_completeness = []
           all_edge_completeness = []
           for d in quality_data:
               for v in d.get('variants', {}).values():
-                  if 'label_fidelity' in v:
-                      all_label_scores.append(v['label_fidelity'])
-                  if 'structural_accuracy' in v:
-                      all_struct_scores.append(v['structural_accuracy'])
+                  for dim in dimensions:
+                      if dim in v:
+                          dim_scores[dim].append(v[dim])
               ver = d.get('verification', {})
               if 'label_completeness' in ver:
                   all_label_completeness.append(ver['label_completeness'])
               if 'edge_completeness' in ver:
                   all_edge_completeness.append(ver['edge_completeness'])
 
-          report['aggregate'] = {
-              'avg_label_fidelity': round(sum(all_label_scores) / len(all_label_scores), 2) if all_label_scores else None,
-              'avg_structural_accuracy': round(sum(all_struct_scores) / len(all_struct_scores), 2) if all_struct_scores else None,
-              'avg_label_completeness': round(sum(all_label_completeness) / len(all_label_completeness), 3) if all_label_completeness else None,
-              'avg_edge_completeness': round(sum(all_edge_completeness) / len(all_edge_completeness), 3) if all_edge_completeness else None,
-              'min_label_fidelity': min(all_label_scores) if all_label_scores else None,
-              'min_structural_accuracy': min(all_struct_scores) if all_struct_scores else None,
-          }
+          agg = {}
+          for dim in dimensions:
+              scores = dim_scores[dim]
+              agg['avg_' + dim] = round(sum(scores) / len(scores), 2) if scores else None
+              agg['min_' + dim] = min(scores) if scores else None
+          agg['avg_label_completeness'] = round(sum(all_label_completeness) / len(all_label_completeness), 3) if all_label_completeness else None
+          agg['avg_edge_completeness'] = round(sum(all_edge_completeness) / len(all_edge_completeness), 3) if all_edge_completeness else None
+          report['aggregate'] = agg
 
           # Complexity band analysis
           bands = {'small (<=10)': [], 'medium (11-25)': [], 'large (26-40)': [], 'very_large (41+)': []}
@@ -256,16 +259,18 @@ steps:
               if not diagrams:
                   band_summary[band_name] = {'count': 0}
                   continue
-              scores = []
+              band_dim_scores = {dim: [] for dim in dimensions}
               for d in diagrams:
                   for v in d.get('variants', {}).values():
-                      if 'structural_accuracy' in v:
-                          scores.append(v['structural_accuracy'])
-              band_summary[band_name] = {
-                  'count': len(diagrams),
-                  'avg_structural_accuracy': round(sum(scores) / len(scores), 2) if scores else None,
-                  'min_structural_accuracy': min(scores) if scores else None,
-              }
+                      for dim in dimensions:
+                          if dim in v:
+                              band_dim_scores[dim].append(v[dim])
+              band_entry = {'count': len(diagrams)}
+              for dim in dimensions:
+                  scores = band_dim_scores[dim]
+                  band_entry['avg_' + dim] = round(sum(scores) / len(scores), 2) if scores else None
+                  band_entry['min_' + dim] = min(scores) if scores else None
+              band_summary[band_name] = band_entry
           report['complexity_bands'] = band_summary
 
       report_path = os.path.join(run_dir, 'quality-report.json')
@@ -305,3 +310,12 @@ steps:
       echo ""
       echo "Quality report:        {{run_dir}}/quality-report.json"
       echo "Output directory:      {{run_dir}}"
+
+  # ---------------------------------------------------------------------------
+  # Step 5: Generate HTML viewer report
+  # ---------------------------------------------------------------------------
+  - id: "generate-viewer"
+    type: "bash"
+    command: |
+      python -m diagram_beautifier.viewer "{{run_dir}}"
+      echo "Viewer report generated: {{run_dir}}/report.html"
