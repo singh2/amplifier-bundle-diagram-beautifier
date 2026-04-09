@@ -231,3 +231,108 @@ def generate_grid_html(run: RunData) -> str:
 
     parts.append("</div>")  # close grid
     return "\n".join(parts)
+
+
+# ---------------------------------------------------------------------------
+# Detail view
+# ---------------------------------------------------------------------------
+
+
+def _dimension_display_name(dim: str) -> str:
+    """Convert a dimension key like 'label_fidelity' to 'Label Fidelity'."""
+    return dim.replace("_", " ").title()
+
+
+def generate_detail_html(diagram: DiagramData) -> str:
+    """Generate detail view HTML for a single diagram.
+
+    Contains three sections:
+    - Image comparison strip (source + 4 variants)
+    - Score heatmap (ALL_DIMENSIONS × VARIANT_NAMES)
+    - Topology diff (completeness stats + missing labels/edges)
+    """
+    name = escape(diagram.name)
+    parts: list[str] = []
+
+    # --- Section A: Image comparison strip ---
+    parts.append('<div class="image-strip">')
+
+    # Source image
+    if diagram.source_image is not None:
+        src = f"./{name}/{name}_source.png"
+        parts.append(f'<img src="{src}" alt="{name} source">')
+    else:
+        parts.append('<div class="no-source">Source not available</div>')
+
+    # Variant images
+    for variant in VARIANT_NAMES:
+        img_path = f"./{name}/{name}_{variant}.png"
+        if variant in diagram.variant_images:
+            parts.append(
+                f'<div class="variant">'
+                f'<img src="{img_path}" alt="{name} {variant}"'
+                f' onclick="openLightbox(this.src)">'
+                f"<label>{variant.title()}</label>"
+                f"</div>"
+            )
+        else:
+            parts.append(
+                f'<div class="variant placeholder">'
+                f"<label>{variant.title()}</label>"
+                f"</div>"
+            )
+
+    parts.append("</div>")  # close image-strip
+
+    # --- Section B: Score heatmap ---
+    parts.append('<table class="heatmap">')
+
+    # Header row
+    parts.append("<tr><th></th>")
+    for variant in VARIANT_NAMES:
+        parts.append(f"<th>{variant.title()}</th>")
+    parts.append("</tr>")
+
+    # Dimension rows
+    for dim in ALL_DIMENSIONS:
+        display = _dimension_display_name(dim)
+        parts.append(f"<tr><th>{display}</th>")
+        for variant in VARIANT_NAMES:
+            score = diagram.variants.get(variant, {}).get(dim)
+            if score is not None:
+                color = score_color(score)
+                parts.append(f'<td class="score {color}">{score}</td>')
+            else:
+                parts.append('<td class="score-na">N/A</td>')
+        parts.append("</tr>")
+
+    parts.append("</table>")
+
+    # --- Section C: Topology diff ---
+    verification = diagram.verification
+    label_pct = _pct(verification.get("label_completeness", 0.0))
+    edge_pct = _pct(verification.get("edge_completeness", 0.0))
+
+    parts.append('<div class="topology-diff">')
+    parts.append(f"<p>Label completeness: {label_pct}%</p>")
+    parts.append(f"<p>Edge completeness: {edge_pct}%</p>")
+
+    # Missing labels
+    missing_labels = verification.get("missing_labels", [])
+    if missing_labels:
+        parts.append("<h4>Missing labels</h4><ul>")
+        for label in missing_labels:
+            parts.append(f"<li>{escape(str(label))}</li>")
+        parts.append("</ul>")
+
+    # Missing edges
+    missing_edges = verification.get("missing_edges", [])
+    if missing_edges:
+        parts.append("<h4>Missing edges</h4><ul>")
+        for edge in missing_edges:
+            parts.append(f"<li>{escape(str(edge))}</li>")
+        parts.append("</ul>")
+
+    parts.append("</div>")  # close topology-diff
+
+    return "\n".join(parts)

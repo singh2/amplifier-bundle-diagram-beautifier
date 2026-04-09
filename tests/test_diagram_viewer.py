@@ -12,6 +12,7 @@ from diagram_beautifier.viewer import (
     VARIANT_NAMES,
     DiagramData,  # noqa: F401
     RunData,  # noqa: F401
+    generate_detail_html,
     generate_grid_html,
     load_diagram_data,
     load_run_data,
@@ -273,3 +274,59 @@ class TestGenerateGridHtml:
         run = load_run_data(tmp_run_dir)
         html = generate_grid_html(run)
         assert "test-diagram_darkmode.png" in html
+
+
+class TestGenerateDetailHtml:
+    def test_contains_image_strip(self, tmp_run_dir: Path) -> None:
+        run = load_run_data(tmp_run_dir)
+        d = run.diagrams[0]
+        html = generate_detail_html(d)
+        assert "image-strip" in html
+        for variant in VARIANT_NAMES:
+            assert f"{d.name}_{variant}.png" in html
+
+    def test_contains_source_image_when_present(self, tmp_run_dir: Path) -> None:
+        run = load_run_data(tmp_run_dir)
+        d8 = [d for d in run.diagrams if d.name == "test-diagram-8"][0]
+        html = generate_detail_html(d8)
+        assert "test-diagram-8_source.png" in html
+
+    def test_source_placeholder_when_absent(self, tmp_run_dir: Path) -> None:
+        run = load_run_data(tmp_run_dir)
+        d = [d for d in run.diagrams if d.name == "test-diagram"][0]
+        html = generate_detail_html(d)
+        assert "source not available" in html.lower() or "no-source" in html
+
+    def test_contains_score_heatmap(self, tmp_run_dir: Path) -> None:
+        run = load_run_data(tmp_run_dir)
+        d = run.diagrams[0]
+        html = generate_detail_html(d)
+        assert "heatmap" in html
+        assert "label_fidelity" in html or "Label Fidelity" in html
+        assert "structural_accuracy" in html or "Structural Accuracy" in html
+
+    def test_heatmap_shows_na_for_missing_dimensions(self, tmp_run_dir: Path) -> None:
+        run = load_run_data(tmp_run_dir)
+        d = [d for d in run.diagrams if d.name == "test-diagram"][0]
+        html = generate_detail_html(d)
+        assert "N/A" in html
+
+    def test_heatmap_shows_all_scores_for_8dim(self, tmp_run_dir: Path) -> None:
+        run = load_run_data(tmp_run_dir)
+        d8 = [d for d in run.diagrams if d.name == "test-diagram-8"][0]
+        html = generate_detail_html(d8)
+        assert "content_accuracy" in html.lower() or "Content Accuracy" in html
+
+    def test_contains_topology_diff(self, tmp_run_dir: Path) -> None:
+        run = load_run_data(tmp_run_dir)
+        d = [d for d in run.diagrams if d.name == "test-diagram"][0]
+        html = generate_detail_html(d)
+        assert "NodeX" in html
+        assert "A -&gt; B" in html or "A -> B" in html
+
+    def test_contains_completeness_percentages(self, tmp_run_dir: Path) -> None:
+        run = load_run_data(tmp_run_dir)
+        d = run.diagrams[0]
+        html = generate_detail_html(d)
+        assert "90" in html
+        assert "75" in html
