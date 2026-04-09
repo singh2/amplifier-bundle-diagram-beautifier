@@ -128,6 +128,28 @@ class TestCompareLabels:
         assert result.missing == 2  # Database, Cache
         assert result.extra == 1  # Extra Node
 
+    def test_duplicate_detection(self) -> None:
+        result = compare_labels(
+            expected=["A", "B", "C"],
+            found=["A", "B", "C", "A", "A"],  # A appears 3 times
+        )
+        assert len(result.duplicates) > 0
+        assert "a" in result.duplicates  # normalized
+
+    def test_duplicates_penalize_completeness(self) -> None:
+        result = compare_labels(
+            expected=["A", "B"],
+            found=["A", "B", "A", "A"],  # A appears 3 times
+        )
+        assert result.completeness_score < 1.0  # penalized
+
+    def test_no_duplicates_when_clean(self) -> None:
+        result = compare_labels(
+            expected=["A", "B", "C"],
+            found=["A", "B", "C"],
+        )
+        assert result.duplicates == []
+
 
 class TestCompareEdges:
     def test_perfect_match(self) -> None:

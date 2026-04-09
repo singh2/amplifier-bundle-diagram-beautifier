@@ -32,6 +32,9 @@ class VerificationResult:
     completeness_score: float
     details: list[LabelMatch] = field(default_factory=list)
     extra_labels: list[str] = field(default_factory=list)
+    duplicates: list[str] = field(
+        default_factory=list
+    )  # labels appearing more than once
 
 
 def build_label_extraction_prompt() -> str:
@@ -44,8 +47,12 @@ def build_label_extraction_prompt() -> str:
             "TEXT EXTRACTION (not quality judgment):",
             "",
             "List every piece of text visible in this image.",
-            "Include: node labels, edge labels, legend text, title text.",
-            "Exclude: decorative text that is part of the background texture.",
+            "Include: node labels, edge labels, legend text, title text,",
+            "annotation text, and any text inside containers or grouping boxes.",
+            "",
+            "IMPORTANT: Do not skip any text, no matter how small, abbreviated,",
+            "or technical. Include labels with special characters, parentheses,",
+            "arrows, dots, and underscores exactly as shown.",
             "",
             "Format your response as:",
             "LABELS: label1 | label2 | label3 | ...",
@@ -112,6 +119,16 @@ def compare_labels(
     extra_labels = [found[j] for j in range(len(found)) if j not in used_found]
     completeness = (exact + close) / len(expected)
 
+    # Detect duplicate labels in found list
+    from collections import Counter
+
+    found_counts = Counter(_normalize(f) for f in found)
+    duplicates = [label for label, count in found_counts.items() if count > 1]
+
+    # Penalize completeness score for duplicates
+    if duplicates:
+        completeness *= max(0.5, 1 - 0.1 * len(duplicates))
+
     return VerificationResult(
         total_expected=len(expected),
         exact_matches=exact,
@@ -121,6 +138,7 @@ def compare_labels(
         completeness_score=completeness,
         details=details,
         extra_labels=extra_labels,
+        duplicates=duplicates,
     )
 
 
