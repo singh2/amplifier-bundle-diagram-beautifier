@@ -799,3 +799,28 @@ class TestSourceImageFallback:
         cached = d / "my-diagram_source.png"
         assert cached.exists()
         assert cached.read_bytes() == b"PNG_SOURCE"
+
+
+class TestLightboxSplitScreen:
+    def test_lightbox_has_split_structure(self, tmp_run_dir: Path) -> None:
+        output = tmp_run_dir / "report.html"
+        generate_report(tmp_run_dir, output)
+        content = output.read_text()
+        assert "lightbox-split" in content
+        assert "lightbox-source" in content
+        assert "lightbox-variant" in content
+
+    def test_variant_onclick_passes_source(self, tmp_run_dir: Path) -> None:
+        run = load_run_data(tmp_run_dir)
+        d8 = [d for d in run.diagrams if d.name == "test-diagram-8"][0]
+        html = generate_detail_html(d8)
+        # Should pass source image path to openLightbox
+        assert "test-diagram-8_source.png" in html
+        assert "openLightbox(this.src," in html  # multi-arg call
+
+    def test_variant_onclick_without_source(self, tmp_run_dir: Path) -> None:
+        run = load_run_data(tmp_run_dir)
+        d = [d for d in run.diagrams if d.name == "test-diagram"][0]
+        html = generate_detail_html(d)
+        # Should still have openLightbox calls but with empty source
+        assert "openLightbox(this.src," in html

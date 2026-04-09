@@ -330,13 +330,21 @@ def generate_detail_html(diagram: DiagramData) -> str:
     name = escape(diagram.name)
     parts: list[str] = []
 
+    # Compute source image path for lightbox split-screen
+    source_src = ""
+    if diagram.source_image:
+        source_src = f"./{name}/{diagram.source_image.name}"
+
     # --- Section A: Image comparison strip ---
     parts.append('<div class="image-strip">')
 
     # Source image
     if diagram.source_image is not None:
         src = f"./{name}/{name}_source.png"
-        parts.append(f'<img src="{src}" alt="{name} source">')
+        parts.append(
+            f'<img src="{src}" alt="{name} source"'
+            f" onclick=\"openLightbox(this.src, '', 'Source')\">"
+        )
     else:
         parts.append('<div class="no-source">Source not available</div>')
 
@@ -347,7 +355,9 @@ def generate_detail_html(diagram: DiagramData) -> str:
             parts.append(
                 f'<div class="variant">'
                 f'<img src="{img_path}" alt="{name} {variant}"'
-                f' onclick="openLightbox(this.src)">'
+                f' onclick="openLightbox(this.src,'
+                f" '{escape(source_src)}',"
+                f" '{escape(variant.title())}')\">"
                 f"<label>{variant.title()}</label>"
                 f"</div>"
             )
@@ -674,10 +684,13 @@ h4{color:#c9d1d9;font-size:.95rem;margin:.5rem 0}
 
 /* Lightbox */
 .lightbox{display:none;position:fixed;top:0;left:0;width:100%;height:100%;
-          background:rgba(0,0,0,.85);z-index:1000;align-items:center;
-          justify-content:center;cursor:pointer}
-.lightbox.active{display:flex}
-.lightbox img{max-width:90%;max-height:90%;border-radius:8px}
+          background:rgba(0,0,0,.95);z-index:1000;cursor:pointer}
+.lightbox.active{display:flex;align-items:center;justify-content:center}
+.lightbox-split{display:flex;gap:2px;width:95%;height:90%;align-items:center}
+.lightbox-panel{flex:1;display:flex;flex-direction:column;align-items:center;height:100%}
+.lightbox-panel img{max-width:100%;max-height:calc(100% - 30px);object-fit:contain}
+.lightbox-label{color:#8b949e;font-size:.85em;margin-bottom:8px;text-transform:uppercase;letter-spacing:1px}
+.lightbox-divider{width:1px;height:80%;background:#30363d}
 
 /* Detail navigation */
 .detail-nav{display:flex;align-items:center;gap:.5rem;margin:1rem 0;flex-wrap:wrap}
@@ -765,10 +778,21 @@ function filterGrid() {
     });
 }
 
-function openLightbox(src) {
-    const lb = document.getElementById('lightbox');
+function openLightbox(variantSrc, sourceSrc, variantLabel) {
+    var lb = document.getElementById('lightbox');
     if (!lb) return;
-    lb.querySelector('img').src = src;
+    document.getElementById('lightbox-source').src = sourceSrc || '';
+    document.getElementById('lightbox-variant').src = variantSrc;
+    document.getElementById('lightbox-variant-label').textContent = variantLabel || 'Variant';
+    var sourcePanel = document.getElementById('lightbox-source').parentElement;
+    var divider = document.querySelector('.lightbox-divider');
+    if (sourceSrc) {
+        sourcePanel.style.display = 'flex';
+        divider.style.display = 'block';
+    } else {
+        sourcePanel.style.display = 'none';
+        divider.style.display = 'none';
+    }
     lb.classList.add('active');
 }
 
@@ -889,7 +913,18 @@ def generate_report(
         "\n"
         '<div id="lightbox" class="lightbox"'
         ' onclick="closeLightbox()">\n'
-        '<img src="" alt="lightbox">\n'
+        '<div class="lightbox-split">\n'
+        '<div class="lightbox-panel">\n'
+        '<div class="lightbox-label">Source</div>\n'
+        '<img id="lightbox-source" src="" alt="Source">\n'
+        "</div>\n"
+        '<div class="lightbox-divider"></div>\n'
+        '<div class="lightbox-panel">\n'
+        '<div class="lightbox-label"'
+        ' id="lightbox-variant-label">Variant</div>\n'
+        '<img id="lightbox-variant" src="" alt="Variant">\n'
+        "</div>\n"
+        "</div>\n"
         "</div>\n"
         "\n"
         "<script>\n"
