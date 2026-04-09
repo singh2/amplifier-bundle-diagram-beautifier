@@ -122,10 +122,30 @@ steps:
             "node_count": <from topology manifest>,
             "edge_count": <from topology manifest>,
             "variants": {
-              "darkmode": {"label_fidelity": <1-5>, "structural_accuracy": <1-5>},
-              "minimal": {"label_fidelity": <1-5>, "structural_accuracy": <1-5>},
-              "sketchnote": {"label_fidelity": <1-5>, "structural_accuracy": <1-5>},
-              "claymation": {"label_fidelity": <1-5>, "structural_accuracy": <1-5>}
+              "darkmode": {
+                "content_accuracy": <1-5>, "layout_quality": <1-5>,
+                "visual_clarity": <1-5>, "prompt_fidelity": <1-5>,
+                "aesthetic_fidelity": <1-5>, "label_fidelity": <1-5>,
+                "structural_accuracy": <1-5>, "color_category_fidelity": <1-5>
+              },
+              "minimal": {
+                "content_accuracy": <1-5>, "layout_quality": <1-5>,
+                "visual_clarity": <1-5>, "prompt_fidelity": <1-5>,
+                "aesthetic_fidelity": <1-5>, "label_fidelity": <1-5>,
+                "structural_accuracy": <1-5>, "color_category_fidelity": <1-5>
+              },
+              "sketchnote": {
+                "content_accuracy": <1-5>, "layout_quality": <1-5>,
+                "visual_clarity": <1-5>, "prompt_fidelity": <1-5>,
+                "aesthetic_fidelity": <1-5>, "label_fidelity": <1-5>,
+                "structural_accuracy": <1-5>, "color_category_fidelity": <1-5>
+              },
+              "claymation": {
+                "content_accuracy": <1-5>, "layout_quality": <1-5>,
+                "visual_clarity": <1-5>, "prompt_fidelity": <1-5>,
+                "aesthetic_fidelity": <1-5>, "label_fidelity": <1-5>,
+                "structural_accuracy": <1-5>, "color_category_fidelity": <1-5>
+              }
             },
             "verification": {
               "label_completeness": <0.0-1.0 from verify.compare_labels>,
@@ -134,6 +154,9 @@ steps:
               "missing_edges": [<list>]
             }
           }
+
+          Also save the source rendering (from Step 2) as:
+          {{run_dir}}/{{diagram.name}}/{{diagram.name}}_source.png
         timeout: 1800
         on_error: "continue"
 
