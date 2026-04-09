@@ -10,14 +10,11 @@ import pytest
 from diagram_beautifier.viewer import (
     ALL_DIMENSIONS,
     VARIANT_NAMES,
+    DiagramData,  # noqa: F401
+    RunData,  # noqa: F401
     load_diagram_data,
     load_run_data,
 )
-
-
-# ---------------------------------------------------------------------------
-# Fixtures
-# ---------------------------------------------------------------------------
 
 QUALITY_2DIM = {
     "diagram": "test-diagram",
@@ -96,32 +93,20 @@ QUALITY_8DIM = {
 
 @pytest.fixture()
 def tmp_run_dir(tmp_path: Path) -> Path:
-    """Create a minimal eval-results run directory with 2 diagrams."""
     run_dir = tmp_path / "run-test"
     run_dir.mkdir()
-
-    # Diagram 1: old 2-dim format
     d1 = run_dir / "test-diagram"
     d1.mkdir()
     (d1 / "quality.json").write_text(json.dumps(QUALITY_2DIM))
     for variant in VARIANT_NAMES:
         (d1 / f"test-diagram_{variant}.png").write_bytes(b"PNG_FAKE")
-
-    # Diagram 2: new 8-dim format
     d2 = run_dir / "test-diagram-8"
     d2.mkdir()
     (d2 / "quality.json").write_text(json.dumps(QUALITY_8DIM))
     for variant in VARIANT_NAMES:
         (d2 / f"test-diagram-8_{variant}.png").write_bytes(b"PNG_FAKE")
-    # Also has a source image
     (d2 / "test-diagram-8_source.png").write_bytes(b"PNG_SOURCE")
-
     return run_dir
-
-
-# ---------------------------------------------------------------------------
-# Constants
-# ---------------------------------------------------------------------------
 
 
 class TestConstants:
@@ -134,11 +119,6 @@ class TestConstants:
         assert "label_fidelity" in ALL_DIMENSIONS
         assert "structural_accuracy" in ALL_DIMENSIONS
         assert "content_accuracy" in ALL_DIMENSIONS
-
-
-# ---------------------------------------------------------------------------
-# load_diagram_data
-# ---------------------------------------------------------------------------
 
 
 class TestLoadDiagramData:
@@ -198,11 +178,10 @@ class TestLoadDiagramData:
         assert data.verification["missing_labels"] == ["NodeX"]
 
     def test_average_score_2dim(self, tmp_run_dir: Path) -> None:
-        """Average across all variants and all available dimensions."""
         data = load_diagram_data(tmp_run_dir / "test-diagram")
         assert data is not None
-        # darkmode: (4+5)/2=4.5, minimal: (3+4)/2=3.5, sketchnote: (5+3)/2=4, clay: (4+4)/2=4
-        # avg = (4.5+3.5+4+4)/4 = 4.0
+        # darkmode: (4+5)/2=4.5, minimal: (3+4)/2=3.5,
+        # sketchnote: (5+3)/2=4, clay: (4+4)/2=4
         assert data.average_score == 4.0
 
     def test_returns_none_for_missing_quality_json(self, tmp_path: Path) -> None:
@@ -211,11 +190,6 @@ class TestLoadDiagramData:
         (d / "some-file.png").write_bytes(b"PNG")
         data = load_diagram_data(d)
         assert data is None
-
-
-# ---------------------------------------------------------------------------
-# load_run_data
-# ---------------------------------------------------------------------------
 
 
 class TestLoadRunData:
@@ -241,4 +215,4 @@ class TestLoadRunData:
         d = tmp_run_dir / "empty-diagram"
         d.mkdir()
         run = load_run_data(tmp_run_dir)
-        assert len(run.diagrams) == 2  # still only the 2 valid ones
+        assert len(run.diagrams) == 2
