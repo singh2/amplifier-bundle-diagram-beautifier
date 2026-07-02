@@ -16,6 +16,34 @@ import re
 from typing import Any
 
 
+# ---------------------------------------------------------------------------
+# Custom exceptions
+# ---------------------------------------------------------------------------
+
+
+class DiagramParseError(Exception):
+    """Base exception for diagram parsing failures.
+
+    Raised when input is fundamentally unusable (e.g. empty or whitespace-only).
+    """
+
+
+class DiagramSyntaxError(DiagramParseError):
+    """Raised when diagram source contains syntax errors.
+
+    Includes line number and position context where available.
+    """
+
+    def __init__(self, message: str, line_number: int | None = None, snippet: str | None = None):
+        self.line_number = line_number
+        self.snippet = snippet
+        super().__init__(message)
+
+
+class DiagramFormatError(DiagramParseError):
+    """Raised when diagram format is unrecognizable (neither valid DOT nor Mermaid)."""
+
+
 def parse_diagram_source(source: str, fmt: str) -> dict[str, Any]:
     """Parse diagram source into a normalized structure.
 
@@ -27,12 +55,27 @@ def parse_diagram_source(source: str, fmt: str) -> dict[str, Any]:
     Returns:
         A dict with keys: ``format``, ``diagram_type``, ``nodes``, ``edges``,
         ``subgraphs``, ``node_count``, ``edge_count``, ``raw_source``.
+
+    Raises:
+        DiagramParseError: If input is empty or whitespace-only.
+        DiagramSyntaxError: If diagram source contains syntax errors.
+        DiagramFormatError: If format is unrecognized.
     """
+    # Validate input is not empty or whitespace-only
+    if not source or not source.strip():
+        raise DiagramParseError(
+            "Input is empty or contains only whitespace. "
+            "Please provide valid diagram source text."
+        )
+
     if fmt == "dot":
         return _parse_dot(source)
     if fmt in ("mermaid", "mmd"):
         return _parse_mermaid(source)
-    raise ValueError(f"Unsupported format: {fmt!r}")
+    raise DiagramFormatError(
+        f"Unsupported format: {fmt!r}. "
+        f"Supported formats are 'dot' (Graphviz) and 'mermaid'/'mmd' (Mermaid)."
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -66,7 +109,43 @@ def _mermaid_result(
 
 
 def _parse_dot(source: str) -> dict[str, Any]:
-    """Parse a Graphviz .dot source."""
+    """Parse a Graphviz .dot source.
+
+    Raises:
+        DiagramSyntaxError: If DOT source contains syntax errors.
+    """
+    # Check for basic DOT structure: graph/digraph keyword followed by braces
+    if not re.search(r"\b(di)?graph\b", source):
+        raise DiagramSyntaxError(
+            "DOT syntax error: Missing 'graph' or 'digraph' keyword. "
+            "DOT diagrams must start with 'graph <name> {' or 'digraph <name> {'.",
+            line_number=1,
+            snippet=source[:100] if len(source) > 100 else source,
+        )
+
+    # Check for balanced braces
+    open_braces = source.count("{")
+    close_braces = source.count("}")
+    if open_braces != close_braces:
+        # Find the line with the issue
+        lines = source.splitlines()
+        brace_count = 0
+        error_line = None
+        for i, line in enumerate(lines, start=1):
+            brace_count += line.count("{") - line.count("}")
+            if brace_count < 0:
+                error_line = i
+                break
+        if error_line is None and brace_count != 0:
+            error_line = len(lines)
+
+        raise DiagramSyntaxError(
+            f"DOT syntax error: Unmatched braces (found {open_braces} '{{' and {close_braces} '}}')."
+            f" Check that each opening brace has a matching closing brace.",
+            line_number=error_line,
+            snippet=lines[error_line - 1] if error_line and error_line <= len(lines) else "",
+        )
+
     # Determine graph type
     if re.search(r"\bdigraph\b", source):
         diagram_type = "digraph"
@@ -171,11 +250,50 @@ def _parse_dot(source: str) -> dict[str, Any]:
 
 
 def _parse_mermaid(source: str) -> dict[str, Any]:
-    """Parse a Mermaid diagram source, dispatching by diagram type."""
+    """Parse a Mermaid diagram source, dispatching by diagram type.
+
+    Raises:
+        DiagramSyntaxError: If Mermaid source contains syntax errors.
+    """
     lines = source.strip().splitlines()
-    first_line = lines[0].strip() if lines else ""
+    if not lines:
+        raise DiagramSyntaxError(
+            "Mermaid syntax error: Empty diagram source. "
+            "Mermaid diagrams must start with a diagram type declaration "
+            "(e.g., 'flowchart TD', 'sequenceDiagram', 'erDiagram', 'classDiagram').",
+            line_number=1,
+        )
+
+    first_line = lines[0].strip()
+    if not first_line:
+        raise DiagramSyntaxError(
+            "Mermaid syntax error: First line is empty. "
+            "Mermaid diagrams must start with a diagram type declaration "
+            "(e.g., 'flowchart TD', 'sequenceDiagram', 'erDiagram', 'classDiagram').",
+            line_number=1,
+            snippet="(empty line)",
+        )
+
     diagram_type = first_line.split()[0] if first_line else "flowchart"
     body = lines[1:]
+
+    # Validate recognized diagram type
+    recognized_types = {
+        "flowchart",
+        "graph",
+        "sequenceDiagram",
+        "erDiagram",
+        "classDiagram",
+    }
+    if diagram_type not in recognized_types and not any(
+        first_line.startswith(t) for t in recognized_types
+    ):
+        raise DiagramSyntaxError(
+            f"Mermaid syntax error: Unrecognized diagram type '{diagram_type}'. "
+            f"Supported types: flowchart, graph, sequenceDiagram, erDiagram, classDiagram.",
+            line_number=1,
+            snippet=first_line,
+        )
 
     if diagram_type == "sequenceDiagram":
         return _parse_mermaid_sequence(source, diagram_type, body)

@@ -4,7 +4,12 @@ from __future__ import annotations
 
 import pytest
 
-from diagram_beautifier.parser import parse_diagram_source
+from diagram_beautifier.parser import (
+    DiagramFormatError,
+    DiagramParseError,
+    DiagramSyntaxError,
+    parse_diagram_source,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -189,8 +194,8 @@ def test_parse_preserves_raw_source() -> None:
 
 
 def test_parse_unsupported_format_raises() -> None:
-    """Parser raises ValueError for unknown format identifiers."""
-    with pytest.raises(ValueError, match="Unsupported format"):
+    """Parser raises DiagramFormatError for unknown format identifiers."""
+    with pytest.raises(DiagramFormatError, match="Unsupported format"):
         parse_diagram_source("some source", "svg")
 
 
@@ -331,3 +336,151 @@ def test_parse_mermaid_class_edges() -> None:
     assert "uses" in edge_labels
     assert "mounts" in edge_labels
     assert "implements" in edge_labels
+
+
+# ---------------------------------------------------------------------------
+# Error handling: empty and whitespace-only input
+# ---------------------------------------------------------------------------
+
+
+def test_empty_input_raises_diagram_parse_error() -> None:
+    """Parser raises DiagramParseError for empty string input."""
+    with pytest.raises(DiagramParseError, match="empty or contains only whitespace"):
+        parse_diagram_source("", "dot")
+
+
+def test_whitespace_only_input_raises_diagram_parse_error() -> None:
+    """Parser raises DiagramParseError for whitespace-only input."""
+    with pytest.raises(DiagramParseError, match="empty or contains only whitespace"):
+        parse_diagram_source("   \n\t  \n  ", "dot")
+
+
+def test_whitespace_mermaid_raises_diagram_parse_error() -> None:
+    """Parser raises DiagramParseError for whitespace-only Mermaid input."""
+    with pytest.raises(DiagramParseError, match="empty or contains only whitespace"):
+        parse_diagram_source("  \n  \n  ", "mermaid")
+
+
+# ---------------------------------------------------------------------------
+# Error handling: DOT syntax errors
+# ---------------------------------------------------------------------------
+
+
+def test_dot_missing_graph_keyword_raises_syntax_error() -> None:
+    """Parser raises DiagramSyntaxError for DOT missing graph/digraph keyword."""
+    malformed_dot = """\
+    A [label="Node A"]
+    B [label="Node B"]
+    A -> B
+    """
+    with pytest.raises(DiagramSyntaxError) as exc_info:
+        parse_diagram_source(malformed_dot, "dot")
+    assert "graph" in str(exc_info.value).lower() or "digraph" in str(exc_info.value).lower()
+    assert exc_info.value.line_number == 1
+    assert exc_info.value.snippet is not None
+
+
+def test_dot_unmatched_braces_extra_opening_raises_syntax_error() -> None:
+    """Parser raises DiagramSyntaxError for DOT with extra opening brace."""
+    malformed_dot = """\
+digraph G {
+    A [label="Node A"]
+    {
+    B [label="Node B"]
+    A -> B
+}
+    """
+    with pytest.raises(DiagramSyntaxError) as exc_info:
+        parse_diagram_source(malformed_dot, "dot")
+    assert "brace" in str(exc_info.value).lower()
+    assert exc_info.value.line_number is not None
+
+
+def test_dot_unmatched_braces_extra_closing_raises_syntax_error() -> None:
+    """Parser raises DiagramSyntaxError for DOT with extra closing brace."""
+    malformed_dot = """\
+digraph G {
+    A [label="Node A"]
+    B [label="Node B"]
+    A -> B
+}
+}
+    """
+    with pytest.raises(DiagramSyntaxError) as exc_info:
+        parse_diagram_source(malformed_dot, "dot")
+    assert "brace" in str(exc_info.value).lower()
+    assert exc_info.value.line_number is not None
+
+
+def test_dot_unmatched_braces_missing_closing_raises_syntax_error() -> None:
+    """Parser raises DiagramSyntaxError for DOT missing closing brace."""
+    malformed_dot = """\
+digraph G {
+    A [label="Node A"]
+    B [label="Node B"]
+    A -> B
+    """
+    with pytest.raises(DiagramSyntaxError) as exc_info:
+        parse_diagram_source(malformed_dot, "dot")
+    assert "brace" in str(exc_info.value).lower()
+    assert exc_info.value.line_number is not None
+
+
+# ---------------------------------------------------------------------------
+# Error handling: Mermaid syntax errors
+# ---------------------------------------------------------------------------
+
+
+def test_mermaid_unrecognized_diagram_type_raises_syntax_error() -> None:
+    """Parser raises DiagramSyntaxError for unrecognized Mermaid diagram type."""
+    malformed_mermaid = """\
+unknownDiagram
+    A --> B
+    """
+    with pytest.raises(DiagramSyntaxError) as exc_info:
+        parse_diagram_source(malformed_mermaid, "mermaid")
+    assert "unrecognized" in str(exc_info.value).lower() or "diagram type" in str(exc_info.value).lower()
+    assert exc_info.value.line_number == 1
+    assert exc_info.value.snippet is not None
+
+
+def test_mermaid_invalid_keyword_raises_syntax_error() -> None:
+    """Parser raises DiagramSyntaxError for Mermaid with invalid keyword."""
+    malformed_mermaid = """\
+pie title My Pie Chart
+    "Slice A" : 40
+    "Slice B" : 60
+    """
+    with pytest.raises(DiagramSyntaxError) as exc_info:
+        parse_diagram_source(malformed_mermaid, "mermaid")
+    assert "unrecognized" in str(exc_info.value).lower() or "diagram type" in str(exc_info.value).lower()
+    assert exc_info.value.line_number == 1
+
+
+# ---------------------------------------------------------------------------
+# Error handling: unrecognizable format
+# ---------------------------------------------------------------------------
+
+
+def test_unrecognizable_format_raises_diagram_format_error() -> None:
+    """Parser raises DiagramFormatError for unrecognizable format identifier."""
+    with pytest.raises(DiagramFormatError) as exc_info:
+        parse_diagram_source("some diagram source", "svg")
+    assert "format" in str(exc_info.value).lower()
+    assert "svg" in str(exc_info.value)
+
+
+def test_format_error_includes_supported_formats_guidance() -> None:
+    """DiagramFormatError includes actionable guidance about supported formats."""
+    with pytest.raises(DiagramFormatError) as exc_info:
+        parse_diagram_source("some diagram source", "plantuml")
+    assert "dot" in str(exc_info.value).lower() or "graphviz" in str(exc_info.value).lower()
+    assert "mermaid" in str(exc_info.value).lower()
+
+
+def test_neither_dot_nor_mermaid_raises_format_error() -> None:
+    """Parser raises DiagramFormatError when format is neither dot nor mermaid."""
+    unrecognized_formats = ["png", "json", "yaml", "xml", "pdf"]
+    for fmt in unrecognized_formats:
+        with pytest.raises(DiagramFormatError):
+            parse_diagram_source("some content", fmt)
