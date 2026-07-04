@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from diagram_beautifier.parser import parse_diagram_source
+from diagram_beautifier.parser import parse_diagram_source, ParseError
 
 
 # ---------------------------------------------------------------------------
@@ -331,3 +331,120 @@ def test_parse_mermaid_class_edges() -> None:
     assert "uses" in edge_labels
     assert "mounts" in edge_labels
     assert "implements" in edge_labels
+
+
+# ---------------------------------------------------------------------------
+# Error handling tests
+# ---------------------------------------------------------------------------
+
+
+def test_parse_none_input_raises_parse_error() -> None:
+    """Parser raises ParseError when source is None."""
+    with pytest.raises(ParseError) as exc_info:
+        parse_diagram_source(None, "dot")  # type: ignore
+    
+    error_msg = str(exc_info.value)
+    # Check for required error message components
+    assert "Failed to parse diagram" in error_msg
+    assert "source is None" in error_msg
+    assert "Expected a non-empty string" in error_msg
+
+
+def test_parse_empty_string_raises_parse_error() -> None:
+    """Parser raises ParseError when source is empty string."""
+    with pytest.raises(ParseError) as exc_info:
+        parse_diagram_source("", "dot")
+    
+    error_msg = str(exc_info.value)
+    # Check for required error message components
+    assert "Failed to parse diagram" in error_msg
+    assert "source is empty" in error_msg
+    assert "Expected a non-empty string" in error_msg
+
+
+def test_parse_whitespace_only_raises_parse_error() -> None:
+    """Parser raises ParseError when source is whitespace only."""
+    with pytest.raises(ParseError) as exc_info:
+        parse_diagram_source("   \n\t  ", "dot")
+    
+    error_msg = str(exc_info.value)
+    # Check for required error message components
+    assert "Failed to parse diagram" in error_msg
+    assert "source is empty" in error_msg
+    assert "Expected a non-empty string" in error_msg
+
+
+def test_parse_invalid_dot_syntax_missing_declaration() -> None:
+    """Parser raises ParseError for DOT source missing graph declaration."""
+    invalid_dot = "A -> B -> C"
+    
+    with pytest.raises(ParseError) as exc_info:
+        parse_diagram_source(invalid_dot, "dot")
+    
+    error_msg = str(exc_info.value)
+    # Check for required error message components
+    assert "Failed to parse DOT diagram" in error_msg
+    assert "missing 'graph' or 'digraph' declaration" in error_msg
+    assert "Expected source to contain" in error_msg
+    assert "Input:" in error_msg
+    assert "A -> B -> C" in error_msg
+
+
+def test_parse_invalid_dot_syntax_unbalanced_braces() -> None:
+    """Parser raises ParseError for DOT source with unbalanced braces."""
+    invalid_dot = "digraph G {\n    A -> B\n"  # Missing closing brace
+    
+    with pytest.raises(ParseError) as exc_info:
+        parse_diagram_source(invalid_dot, "dot")
+    
+    error_msg = str(exc_info.value)
+    # Check for required error message components
+    assert "Failed to parse DOT diagram" in error_msg
+    assert "unbalanced braces" in error_msg
+    assert "Expected matching opening and closing braces" in error_msg
+    assert "Input:" in error_msg
+
+
+def test_parse_invalid_mermaid_syntax_empty_lines() -> None:
+    """Parser raises ParseError for Mermaid source with no lines."""
+    # Newlines only are caught by the empty validation at the top level
+    invalid_mermaid = "\n\n\n"
+    
+    with pytest.raises(ParseError) as exc_info:
+        parse_diagram_source(invalid_mermaid, "mermaid")
+    
+    error_msg = str(exc_info.value)
+    # Check for required error message components
+    assert "Failed to parse diagram" in error_msg
+    assert "source is empty" in error_msg
+    assert "Expected a non-empty string" in error_msg
+
+
+def test_parse_invalid_mermaid_missing_declaration() -> None:
+    """Parser accepts minimal Mermaid syntax but validates structure."""
+    # Mermaid is permissive - even "A --> B" is valid (inferred flowchart)
+    # The parser focuses on catching truly broken syntax (empty input, malformed)
+    # This test documents that Mermaid validation is primarily structural
+    valid_minimal = "A --> B"
+    result = parse_diagram_source(valid_minimal, "mermaid")
+    # Should parse successfully (inferred as flowchart)
+    assert result["format"] == "mermaid"
+    # Parser successfully processes the input without raising ParseError
+    assert "diagram_type" in result
+
+
+def test_parse_error_messages_include_truncated_input() -> None:
+    """ParseError messages include truncated input snippets for long sources."""
+    # Create a very long invalid source
+    long_invalid_source = "A -> B -> C -> D -> E -> F -> G -> H -> I -> J -> K -> L -> M -> N -> O -> P -> Q -> R -> S -> T -> U -> V -> W -> X -> Y -> Z" * 5
+    
+    with pytest.raises(ParseError) as exc_info:
+        parse_diagram_source(long_invalid_source, "dot")
+    
+    error_msg = str(exc_info.value)
+    # Check that input is truncated (should end with ...)
+    assert "Input:" in error_msg
+    # The entire long source should not be in the error message
+    assert len(error_msg) < len(long_invalid_source)
+    # Should contain truncation indicator
+    assert "..." in error_msg
