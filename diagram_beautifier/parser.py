@@ -16,6 +16,10 @@ import re
 from typing import Any
 
 
+class ParseError(RuntimeError):
+    """Raised when diagram source cannot be parsed."""
+
+
 def parse_diagram_source(source: str, fmt: str) -> dict[str, Any]:
     """Parse diagram source into a normalized structure.
 
@@ -27,7 +31,24 @@ def parse_diagram_source(source: str, fmt: str) -> dict[str, Any]:
     Returns:
         A dict with keys: ``format``, ``diagram_type``, ``nodes``, ``edges``,
         ``subgraphs``, ``node_count``, ``edge_count``, ``raw_source``.
+
+    Raises:
+        ParseError: If source is None, empty, or contains invalid syntax.
+        ValueError: If fmt is not a supported format.
     """
+    # Validate input
+    if source is None:
+        raise ParseError(
+            "Failed to parse diagram: source is None. "
+            "Expected a non-empty string containing diagram source text."
+        )
+    
+    if not source or not source.strip():
+        raise ParseError(
+            "Failed to parse diagram: source is empty. "
+            "Expected a non-empty string containing diagram source text."
+        )
+    
     if fmt == "dot":
         return _parse_dot(source)
     if fmt in ("mermaid", "mmd"):
@@ -36,8 +57,15 @@ def parse_diagram_source(source: str, fmt: str) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
-# Shared helper
+# Shared helpers
 # ---------------------------------------------------------------------------
+
+
+def _truncate_for_error(text: str, max_length: int = 100) -> str:
+    """Truncate text for display in error messages."""
+    if len(text) <= max_length:
+        return repr(text)
+    return repr(text[:max_length] + "...")
 
 
 def _mermaid_result(
@@ -66,7 +94,31 @@ def _mermaid_result(
 
 
 def _parse_dot(source: str) -> dict[str, Any]:
-    """Parse a Graphviz .dot source."""
+    """Parse a Graphviz .dot source.
+    
+    Raises:
+        ParseError: If the source contains invalid DOT syntax.
+    """
+    # Basic syntax validation - must contain graph or digraph declaration
+    if not re.search(r"\b(di)?graph\b", source):
+        snippet = _truncate_for_error(source)
+        raise ParseError(
+            f"Failed to parse DOT diagram: missing 'graph' or 'digraph' declaration. "
+            f"Expected source to contain 'graph {{...}}' or 'digraph {{...}}'. "
+            f"Input: {snippet}"
+        )
+    
+    # Check for balanced braces
+    open_braces = source.count("{")
+    close_braces = source.count("}")
+    if open_braces != close_braces:
+        snippet = _truncate_for_error(source)
+        raise ParseError(
+            f"Failed to parse DOT diagram: unbalanced braces (found {open_braces} '{{' but {close_braces} '}}'). "
+            f"Expected matching opening and closing braces for graph structure. "
+            f"Input: {snippet}"
+        )
+    
     # Determine graph type
     if re.search(r"\bdigraph\b", source):
         diagram_type = "digraph"
@@ -171,9 +223,31 @@ def _parse_dot(source: str) -> dict[str, Any]:
 
 
 def _parse_mermaid(source: str) -> dict[str, Any]:
-    """Parse a Mermaid diagram source, dispatching by diagram type."""
+    """Parse a Mermaid diagram source, dispatching by diagram type.
+    
+    Raises:
+        ParseError: If the source contains invalid Mermaid syntax.
+    """
     lines = source.strip().splitlines()
-    first_line = lines[0].strip() if lines else ""
+    if not lines:
+        snippet = _truncate_for_error(source)
+        raise ParseError(
+            f"Failed to parse Mermaid diagram: source contains no lines. "
+            f"Expected source to start with a diagram type declaration "
+            f"(e.g., 'flowchart TD', 'sequenceDiagram', 'erDiagram', 'classDiagram'). "
+            f"Input: {snippet}"
+        )
+    
+    first_line = lines[0].strip()
+    if not first_line:
+        snippet = _truncate_for_error(source)
+        raise ParseError(
+            f"Failed to parse Mermaid diagram: first line is empty. "
+            f"Expected first line to contain a diagram type declaration "
+            f"(e.g., 'flowchart TD', 'sequenceDiagram', 'erDiagram', 'classDiagram'). "
+            f"Input: {snippet}"
+        )
+    
     diagram_type = first_line.split()[0] if first_line else "flowchart"
     body = lines[1:]
 
