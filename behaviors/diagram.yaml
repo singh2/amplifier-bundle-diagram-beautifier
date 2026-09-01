@@ -3,6 +3,10 @@ bundle:
   version: 0.1.0
   description: Diagram beautification capability — Graphviz/Mermaid rendering and aesthetic transformation via nano-banana
 
+context:
+  include:
+    - diagram-beautifier:context/diagram-awareness.md
+
 tools:
   - module: tool-nano-banana
     source: git+https://github.com/kenotron-ms/amplifier-module-tool-nano-banana@main
