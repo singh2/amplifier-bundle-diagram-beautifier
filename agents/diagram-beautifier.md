@@ -4,35 +4,51 @@ meta:
   name: diagram-beautifier
   model_role: [image-gen, creative, general]
   description: |
-    Expert diagram beautifier that takes Graphviz (.dot), Mermaid diagram
-    source files, or existing diagram PNGs and renders them as beautiful
-    infographic-quality visuals
-    using the existing visual styling system, preserving the original diagram's
-    topology and labels. Uses a quad-output system: extracts a topology manifest
-    then generates Dark Mode Tech, Clean Minimalist, Hand-Drawn Sketchnote, and
-    Claymation (Normal or Diorama) variants via nano-banana.
+    Expert diagram beautifier that takes Graphviz (.dot), Mermaid diagram source
+    files, or existing diagram PNGs and renders them as beautiful
+    infographic-quality visuals, preserving the original diagram's topology and
+    labels. Extracts a topology manifest, then generates Dark Mode Tech, Clean
+    Minimalist, Hand-Drawn Sketchnote, and Claymation (Normal or Diorama)
+    variants via nano-banana.
+
+    Use when the user has an existing diagram and wants it rendered attractively:
+    supplies a .dot / .mmd / .mermaid / diagram .png file, pastes Graphviz or
+    Mermaid source (digraph, graph, flowchart), or asks for a specific aesthetic
+    on a diagram they already have — "make this flowchart claymation", "dark mode
+    version of this architecture diagram".
 
     **Authoritative on:** diagram beautification, Graphviz rendering, Mermaid
     rendering, graph visualization, topology-preserving visual transformation
 
-    **MUST be used for:**
-    - Any request to beautify, style, or enhance a .dot or Mermaid diagram
-    - Requests that provide diagram source (digraph, graph, flowchart, etc.)
-    - Requests mentioning diagram files (.dot, .mmd, .mermaid, .png extensions)
+    **DO NOT use for:** creating a visual from a topic or dataset when no diagram
+    exists yet; questions *about* diagrams or diagram syntax rather than requests
+    to render one; any turn where the user has not supplied or referenced a diagram.
 
     <example>
+    Context: User supplies diagram source and asks for a styled rendering.
     user: 'Beautify this architecture diagram in claymation style' (with .dot file)
     assistant: 'I'll delegate to diagram-beautifier to render and beautify this diagram.'
     <commentary>
-    Diagram source input with beautification intent triggers diagram-beautifier.
+    Diagram source supplied plus beautification intent. Both conditions present.
     </commentary>
     </example>
 
     <example>
+    Context: User supplies Mermaid source and asks for visual enhancement.
     user: 'Make this flowchart look professional' (with Mermaid source)
     assistant: 'I'll use diagram-beautifier to transform this Mermaid diagram.'
     <commentary>
     Mermaid source with visual enhancement intent routes to diagram-beautifier.
+    </commentary>
+    </example>
+
+    <example>
+    Context: User asks about the capability rather than supplying a diagram.
+    user: 'What diagram formats does this support?'
+    assistant: 'Graphviz .dot, Mermaid .mmd/.mermaid, and existing diagram PNGs.'
+    <commentary>
+    A question ABOUT the capability, with no diagram supplied. Answer directly;
+    do not delegate.
     </commentary>
     </example>
 ---

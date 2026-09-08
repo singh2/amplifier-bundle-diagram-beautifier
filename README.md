@@ -27,6 +27,11 @@ bundle:
   active: diagram-beautifier
 ```
 
+> **Installing as an always-on addon?** Point `--app` at the **behavior**
+> (`#subdirectory=behaviors/diagram.yaml`), not the repo root. An `--app` bundle is
+> composed onto every session *after* the bundle you actually selected, and a bundle
+> that carries an instruction replaces the host session's instruction.
+
 ### Beautify a diagram
 
 Start an Amplifier session and ask in natural language:
@@ -127,7 +132,7 @@ diagram-beautifier/
 ├── behaviors/
 │   └── diagram.yaml               # Tool registration (nano-banana, stitch-panels)
 ├── context/
-│   └── diagram-awareness.md       # Root session routing instructions
+│   └── diagram-awareness.md       # Capability awareness (wired via behaviors/diagram.yaml)
 ├── docs/
 │   ├── style-guide.md             # Master aesthetic templates (6 styles)
 │   └── diagram-style-guide.md     # Diagram-specific node shapes and connectors
